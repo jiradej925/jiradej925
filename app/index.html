@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Panel Forge</title>
+<meta name="description" content="Turn any picture into posed, lettered manga pages and manhwa strips with Gemini.">
+<meta name="theme-color" content="#131216">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Chakra+Petch:wght@500;600;700&family=Comic+Neue:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Mali:wght@400;600&family=Patrick+Hand&family=Special+Elite&display=swap">
+<script src="vendor/jszip.min.js"></script>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#131216;--bg2:#19181d;--panel:#211f26;--line:#2d2b33;--line2:#3e3a45;
+  --text:#eeeae2;--muted:#a59f95;--faint:#716b75;
+  --gold:#d8a540;--gold-hi:#e9bd5e;--gold-ink:#1c1405;--gold-soft:rgba(216,165,64,.13);
+  --ok:#78c291;--warn:#e7ad62;--bad:#e27462;
+  --desk:#0e0d10;
+  --ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --disp:"Chakra Petch","IBM Plex Sans",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+dialog{background:var(--bg2);color:var(--text);border:1px solid var(--line2);border-radius:14px;padding:0;width:min(520px,calc(100% - 32px));max-height:calc(100% - 32px);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+dialog::backdrop{background:rgba(8,7,10,.7)}
+.dlg{padding:20px;display:grid;gap:14px}
+details.more{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg2)}
+details.more>summary{cursor:pointer;font-weight:600;color:var(--muted)}
+details.more[open]>summary{margin-bottom:10px}
+.keybar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--gold-soft);border-bottom:1px solid rgba(216,165,64,.4);font-size:13.5px}
+.keybar b{color:var(--gold-hi)}
+.progress{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--gold);transition:width .3s}
+body{background:var(--bg);color:var(--text);font:14px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#app{height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font:700 17px/1 var(--disp);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.mark{width:24px;height:24px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px}
+.mark i{background:var(--gold);border-radius:1px}.mark i:first-child{grid-column:1/-1}
+.proj{display:flex;gap:8px;align-items:center;flex:1 1 320px;min-width:0}
+.proj input{max-width:240px}
+.proj select{max-width:170px}
+.modes{display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+.modes button{border:0;background:none;padding:8px 14px;cursor:pointer;font:600 13px var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;gap:6px;align-items:baseline}
+.modes button span{font:400 12px var(--ui);letter-spacing:0;opacity:.8}
+.modes button.on{background:var(--gold);color:var(--gold-ink)}
+.savebox{display:flex;align-items:center;gap:10px;margin-left:auto}
+.savestate{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.savestate.bad{color:var(--warn)}
+
+/* main columns */
+main{display:grid;grid-template-columns:minmax(300px,370px) minmax(0,1fr) minmax(270px,330px);min-height:0}
+.col{overflow:auto;min-height:0}
+.left{border-right:1px solid var(--line);padding:18px 18px 28px}
+.center{background:var(--desk);background-image:radial-gradient(rgba(255,255,255,.045) 1px,transparent 1px);background-size:18px 18px;padding:18px 16px 40px}
+.right{border-left:1px solid var(--line);padding:18px 16px 28px;background:var(--bg)}
+
+/* step bar */
+.steps{display:flex;gap:4px;overflow-x:auto;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));background:var(--bg2);border-top:1px solid var(--line)}
+.step{flex:1 0 auto;display:flex;gap:8px;align-items:center;justify-content:center;padding:8px 12px;border-radius:9px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer;font:600 13px var(--disp);letter-spacing:.04em;white-space:nowrap}
+.step:hover{background:var(--panel);color:var(--text)}
+.step .n{width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;font:500 12px var(--mono)}
+.step.done .n{border-color:var(--gold);color:var(--gold)}
+.step.on{background:var(--gold-soft);border-color:rgba(216,165,64,.55);color:var(--text)}
+.step.on .n{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
+
+/* type */
+.eyebrow{font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+h2{margin:2px 0 0;font:600 21px/1.2 var(--disp);letter-spacing:.02em;text-wrap:balance}
+h3{margin:0;font:600 12px var(--disp);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+p{margin:0}
+.lead{color:var(--muted);margin-top:6px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+
+/* building blocks */
+.stack{display:grid;gap:10px}
+.sec{display:grid;gap:10px;padding-block:16px;border-top:1px solid var(--line)}
+.sec.first{border-top:0;padding-top:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row>.grow{flex:1 1 auto}
+.btn{min-height:40px;padding:8px 14px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center;text-decoration:none;color:var(--text)}
+.btn:hover:not(:disabled){border-color:var(--faint)}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
+.btn.gold:hover:not(:disabled){background:var(--gold-hi)}
+.btn.big{min-height:50px;width:100%;font-size:15px}
+.btn.sm{min-height:32px;padding:5px 10px;font-size:13px;border-radius:7px}
+.btn.ghost{background:none}
+.btn.danger{color:#f1a597}
+.btn.icon{width:40px;padding:0;font-size:20px;line-height:1}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.wait{position:relative;color:transparent!important}
+.btn.wait::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;border:2px solid var(--gold-ink);border-right-color:transparent;animation:spin .8s linear infinite}
+.btn:not(.gold).wait::after{border-color:var(--gold);border-right-color:transparent}
+@keyframes spin{to{transform:rotate(360deg)}}
+.f{display:grid;gap:5px}
+.f>span{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.f>small{color:var(--faint);font-size:12px}
+input[type=text],input[type=password],input:not([type]),textarea,select{width:100%;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:9px 11px;color:var(--text)}
+textarea{resize:vertical;min-height:62px;line-height:1.45}
+input[type=color]{width:40px;height:40px;padding:3px;border:1px solid var(--line2);border-radius:8px;background:var(--bg2);cursor:pointer}
+input[type=range]{width:100%;accent-color:var(--gold)}
+input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px}
+.check{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.check input{margin-top:2px;flex:none}
+.seg{display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+.seg button{flex:1;border:0;background:none;padding:8px 6px;cursor:pointer;color:var(--muted);font-weight:600;font-size:13px}
+.seg button+button{border-left:1px solid var(--line2)}
+.seg button.on{background:var(--gold-soft);color:var(--gold-hi)}
+.drop{border:1.5px dashed var(--line2);border-radius:12px;padding:20px 14px;text-align:center;color:var(--muted);cursor:pointer;display:grid;gap:4px;place-items:center;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--gold);background:var(--gold-soft)}
+.drop b{color:var(--text);font-weight:600}
+.drop.slim{padding:12px}
+.note{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--muted);font-size:13px}
+.note b{color:var(--text)}
+.note.warn{border-color:rgba(231,173,98,.4);color:#efc792}
+.note.gold{border-color:rgba(216,165,64,.4)}
+.note.bad{border-color:rgba(226,116,98,.45);color:#f0a99c}
+.chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);border-radius:999px;padding:6px 12px;background:var(--bg2);cursor:pointer;font-weight:600;font-size:13px}
+.chip .dot{width:10px;height:10px;border-radius:50%}
+.chip.on{border-color:var(--gold);background:var(--gold-soft)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-block;font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--panel);color:var(--muted);border:1px solid var(--line)}
+.tag.gold{color:var(--gold);border-color:rgba(216,165,64,.4)}
+.tag.warn{color:var(--warn);border-color:rgba(231,173,98,.4)}
+.img-box{border-radius:10px;overflow:hidden;background:var(--bg2);border:1px solid var(--line);position:relative}
+.img-box img{display:block;width:100%;height:auto}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.stepnav{display:flex;gap:8px;margin-top:18px}
+.stepnav .btn{flex:1}
+
+/* pose */
+.pose-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.pose-card{border:1px solid var(--line2);border-radius:10px;padding:6px;background:var(--bg2);cursor:pointer;display:grid;gap:5px;text-align:left}
+.pose-card.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.pose-card canvas,.pose-card img{width:100%;aspect-ratio:2/3;object-fit:contain;background:#000;border-radius:6px;display:block}
+.pose-card .nm{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#poseEd{width:100%;max-width:300px;aspect-ratio:2/3;border-radius:10px;display:block;margin:0 auto;touch-action:none;cursor:grab;background:#000}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+
+/* characters */
+.char{border:1px solid var(--line2);border-radius:12px;padding:12px;display:grid;gap:10px;background:var(--bg2)}
+.char-head{display:flex;gap:8px;align-items:center}
+.char-head input[type=text]{font:600 15px var(--disp);letter-spacing:.06em}
+.slot{border:1px dashed var(--line2);border-radius:8px;aspect-ratio:3/4;display:grid;place-items:center;text-align:center;font-size:11px;color:var(--faint);cursor:pointer;overflow:hidden;position:relative;background:var(--bg)}
+.slot:hover{border-color:var(--gold)}
+.slot img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.slot .x{position:absolute;top:3px;right:3px;z-index:2;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;font-size:14px;line-height:1}
+.slot .lb{position:absolute;left:0;right:0;bottom:0;z-index:1;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;padding:10px 4px 3px;font:500 10px var(--mono);text-transform:uppercase;letter-spacing:.06em}
+
+/* layout thumbs */
+.lay-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
+.lay{border:1px solid var(--line2);border-radius:10px;background:var(--bg2);padding:8px;cursor:pointer;display:grid;gap:6px;justify-items:center;font-size:12px;font-weight:600;color:var(--muted)}
+.lay svg{width:100%;max-width:70px;height:auto}
+.lay.on{border-color:var(--gold);color:var(--text);box-shadow:0 0 0 1px var(--gold)}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.swatches input[type=color]{width:38px;height:38px}
+
+/* canvas */
+.canvas-head{display:flex;justify-content:space-between;align-items:center;gap:10px;max-width:680px;margin:0 auto 12px;color:var(--muted);font-size:13px;flex-wrap:wrap}
+.canvas-head b{color:var(--text);font-family:var(--disp);letter-spacing:.04em}
+.page{margin:0 auto;background:#fff;box-shadow:0 24px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)}
+.page svg{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none}
+.page .pnl{cursor:pointer}
+.page .bub{cursor:move}
+.page [data-h]{cursor:crosshair}
+
+/* inspector */
+.insp-head{display:flex;align-items:center;gap:10px}
+.insp-head>div{flex:1;text-align:center}
+.thumb{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--bg2);aspect-ratio:var(--ar,1);display:grid;place-items:center;color:var(--faint);font-size:12px}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.vars{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.var{border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--bg2);display:grid}
+.var.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.var img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.var .row{padding:6px;justify-content:space-between}
+.hist{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.hist button{flex:none;width:58px;height:58px;border-radius:8px;overflow:hidden;border:1px solid var(--line2);padding:0;cursor:pointer;background:var(--bg2);position:relative}
+.hist button.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.hist img{width:100%;height:100%;object-fit:cover}
+.hist span{position:absolute;left:3px;top:2px;font:500 10px var(--mono);color:#fff;text-shadow:0 1px 2px #000}
+
+/* prompt + chat */
+.prompt{font:12.5px/1.55 var(--mono);background:var(--bg2);border:1px solid var(--line2);border-radius:10px;padding:12px;white-space:pre-wrap;max-height:300px;overflow:auto;color:#d9d3c8}
+.attach{display:grid;gap:6px}
+.att{display:flex;gap:10px;align-items:center;font-size:13px}
+.att .t{width:38px;height:38px;border-radius:6px;overflow:hidden;background:#000;flex:none;display:grid;place-items:center;color:var(--faint);font-size:10px;border:1px solid var(--line)}
+.att .t img,.att .t canvas{width:100%;height:100%;object-fit:cover}
+.chat{display:grid;gap:8px}
+.msg{padding:10px 12px;border-radius:10px;font-size:13.5px;white-space:pre-wrap}
+.msg.me{background:var(--panel);justify-self:end;max-width:88%}
+.msg.ai{background:var(--bg2);border:1px solid rgba(216,165,64,.35)}
+.msg.ai .row{margin-top:8px}
+.bub-list{display:grid;gap:6px}
+.bub-item{display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line2);border-radius:9px;background:var(--bg2);cursor:pointer;text-align:left;width:100%}
+.bub-item.on{border-color:var(--gold)}
+.bub-item .o{width:22px;height:22px;border-radius:50%;background:var(--gold);color:var(--gold-ink);display:grid;place-items:center;font:600 11px var(--mono);flex:none}
+.bub-item .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.veo{border:1px solid var(--line2);border-radius:12px;padding:12px;display:grid;gap:8px;background:var(--bg2)}
+.veo textarea{font:12.5px/1.5 var(--mono)}
+
+.toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:#2a2730;border:1px solid var(--line2);color:var(--text);padding:10px 16px;border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.5);z-index:50;max-width:min(520px,calc(100% - 32px));font-size:13.5px}
+.toast[hidden]{display:none}
+
+@media (max-width:1180px){
+  #app{height:auto;min-height:100%}
+  main{grid-template-columns:minmax(300px,360px) minmax(0,1fr)}
+  .col{overflow:visible}
+  .right{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}
+  .steps{position:sticky;bottom:0;z-index:20}
+}
+@media (max-width:760px){
+  main{grid-template-columns:minmax(0,1fr)}
+  .left{border-right:0}
+  .step{padding:8px 10px}
+  .step .lbl{display:none}
+  .step.on .lbl{display:inline}
+  .proj input{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top" id="top"></header>
+  <div class="keybar" id="keybar" hidden><span><b>One step before you start:</b> add your free Gemini API key so Panel Forge can make pictures.</span><button class="btn sm gold" data-act="openSettings">Add key</button></div>
+  <main>
+    <section class="col left" id="left" aria-label="Step tools"></section>
+    <section class="col center" id="center" aria-label="Page canvas"></section>
+    <aside class="col right" id="right" aria-label="Panel inspector"></aside>
+  </main>
+  <nav class="steps" id="steps" aria-label="Workflow steps"></nav>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<dialog id="settings" aria-labelledby="setTitle">
+  <form class="dlg" method="dialog" id="setForm">
+    <div><div class="eyebrow">Settings</div><h2 id="setTitle">Connect Gemini</h2>
+      <p class="lead">Panel Forge uses Google's Gemini to read pictures, plan panels and draw the art. You need your own API key. It's free to start.</p></div>
+    <ol class="small muted" style="margin:0;padding-left:20px;display:grid;gap:4px">
+      <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--gold-hi)">aistudio.google.com/apikey</a> and sign in with Google.</li>
+      <li>Press <b>Create API key</b> and copy it.</li>
+      <li>Paste it below and press <b>Test key</b>.</li>
+    </ol>
+    <label class="f"><span>Gemini API key</span><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
+    <label class="check small"><input type="checkbox" id="setShow"><span>Show key</span></label>
+    <p class="note small">Your key is saved only on this computer and is sent only to Google. Picture generation can cost money on paid Gemini plans; check your usage in AI Studio. <a href="privacy.html" target="_blank" rel="noopener" style="color:var(--gold-hi)">Privacy policy</a></p>
+    <details class="more"><summary>Advanced: model names</summary>
+      <div class="stack">
+        <label class="f"><span>Text model (reading, planning, prompts)</span><input id="setText" type="text" list="textModels" spellcheck="false"></label>
+        <label class="f"><span>Image model (drawing and editing panels)</span><input id="setImage" type="text" list="imageModels" spellcheck="false"><small>gemini-2.5-flash-image is "Nano Banana". gemini-3-pro-image-preview is "Nano Banana Pro": better, slower, needs a paid key.</small></label>
+        <datalist id="textModels"><option value="gemini-2.5-flash"><option value="gemini-2.5-pro"><option value="gemini-3-flash-preview"></datalist>
+        <datalist id="imageModels"><option value="gemini-2.5-flash-image"><option value="gemini-3-pro-image-preview"><option value="gemini-3.1-flash-image"></datalist>
+      </div>
+    </details>
+    <label class="f"><span>Versions per panel</span><select id="setVars"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+    <p class="small" id="setMsg" role="status"></p>
+    <div class="row"><button type="button" class="btn grow" data-act="testKey">Test key</button><button type="button" class="btn gold grow" data-act="saveSettings">Save</button><button type="button" class="btn ghost" data-act="closeSettings">Close</button></div>
+  </form>
+</dialog>
+
+<script>
+'use strict';
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10);
+const f1=n=>Math.round(n*10)/10;
+const clone=o=>JSON.parse(JSON.stringify(o));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const trunc=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
+let toastT;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,4200)}
+
+/* ---------- constants ---------- */
+const STEPS=[
+  ['Upload','Add the picture you want to turn into a panel. Gemini reads who is in it, what they wear and where they are.'],
+  ['Pose','Choose how the character stands or moves: upload a pose file, build a stick figure, or use a photo of yourself.'],
+  ['Characters','Lock in who appears, so they look the same in every panel.'],
+  ['Layout','Pick a page or strip layout, set the look, and plan what happens in each panel.'],
+  ['Generate','Make the art for each panel. Gemini draws 1 to 4 versions and you pick the best one.'],
+  ['Refine','Describe a change ("make her look angrier") and Gemini edits the panel. Every version is kept, so you can undo.'],
+  ['Letter','Add speech bubbles, thoughts, captions and sound effects. They stay editable and never get baked into the art.'],
+  ['Export','Download panels, the full page or strip, and your project file.'],
+  ['Animate','Get a ready-to-paste Veo video prompt and a 2.5D layer plan for every panel.'],
+];
+const SHOTS={ecu:'Extreme close-up',cu:'Close-up',med:'Medium shot',full:'Full body',wide:'Wide shot',bird:"Bird's-eye view",worm:"Worm's-eye view",dutch:'Dutch angle'};
+const POSE_KINDS={openpose:'OpenPose skeleton',depth:'Depth map',silhouette:'Silhouette',lineart:'Line art',clean:'Clean picture'};
+const SPACES={top:'Top',right:'Right side',left:'Left side',bottom:'Bottom',none:'No space needed'};
+const MANGA={
+  splash:{label:'Splash',r:[[0,0,1,1]]},
+  '3':{label:'3 panels',r:[[0,0,1,.40],[.51,.42,.49,.58],[0,.42,.49,.58]]},
+  '4':{label:'4 panels',r:[[0,0,1,.30],[.51,.32,.49,.34],[0,.32,.49,.34],[0,.68,1,.32]]},
+  '5':{label:'5 panels',r:[[.51,0,.49,.30],[0,0,.49,.30],[0,.32,1,.30],[.40,.64,.60,.36],[0,.64,.38,.36]]},
+  '6':{label:'6 panels',r:[[.51,0,.49,.32],[0,0,.49,.32],[.51,.34,.49,.32],[0,.34,.49,.32],[.51,.68,.49,.32],[0,.68,.49,.32]]},
+};
+const MANHWA={
+  opening:{label:'Opening',sizes:['wide','standard','standard','tall']},
+  talk:{label:'Conversation',sizes:['standard','standard','standard']},
+  action:{label:'Action',sizes:['standard','tall','wide','standard','tall']},
+  reveal:{label:'Big reveal',sizes:['wide','tall']},
+};
+const SIZES={wide:{label:'Wide (16:9)',h:450},standard:{label:'Square',h:800},tall:{label:'Tall (2:3)',h:1200}};
+const PAGE_M={w:1000,h:1414,m:50};
+const STRIP_W=800,STRIP_PAD=60,SLICE_H=1280;
+const FONTS={
+  comic:{label:'Comic Neue (dialogue)',fam:'"Comic Neue", "Comic Sans MS", sans-serif',w:700},
+  hand:{label:'Patrick Hand (thoughts)',fam:'"Patrick Hand", "Comic Neue", sans-serif',w:400},
+  bang:{label:'Bangers (shouts, SFX)',fam:'Bangers, Impact, sans-serif',w:400},
+  type:{label:'Special Elite (narration)',fam:'"Special Elite", "Courier New", monospace',w:400},
+  mali:{label:'Mali (Thai + English)',fam:'Mali, "Comic Neue", sans-serif',w:600},
+};
+const BTYPES={
+  speech:{label:'Speech',font:'comic',size:26,tip:'A normal talking bubble with a tail'},
+  thought:{label:'Thought',font:'hand',size:28,tip:'A cloud bubble with little circles as the tail'},
+  shout:{label:'Shout',font:'bang',size:34,tip:'A spiky bubble for yelling'},
+  narration:{label:'Narration',font:'type',size:22,tip:'A box for the narrator, no tail'},
+  sfx:{label:'Sound effect',font:'bang',size:72,tip:'Big outlined lettering, no bubble'},
+};
+const EXAMPLE_SCENE='Night rooftop in the rain. JIRAD finds ROVEN standing at the edge, looking down at the city lights. She turns around, surprised. He holds out the pendant she lost. She smiles for the first time.';
+
+/* ---------- poses ---------- */
+const LIMBS=[[1,2],[1,5],[2,3],[3,4],[5,6],[6,7],[1,8],[8,9],[9,10],[1,11],[11,12],[12,13],[1,0],[0,14],[14,16],[0,15],[15,17]];
+const JC=[[255,0,0],[255,85,0],[255,170,0],[255,255,0],[170,255,0],[85,255,0],[0,255,0],[0,255,85],[0,255,170],[0,255,255],[0,170,255],[0,85,255],[0,0,255],[85,0,255],[170,0,255],[255,0,255],[255,0,170],[255,0,85]];
+const JOINT_NAMES=['nose','neck','right shoulder','right elbow','right wrist','left shoulder','left elbow','left wrist','right hip','right knee','right ankle','left hip','left knee','left ankle','right eye','left eye','right ear','left ear'];
+const FACE={front:[[-.02,-.012],[.02,-.012],[-.04,-.004],[.04,-.004]],left:[[-.03,-.012],[-.008,-.012],null,[.022,-.004]],right:[[.008,-.012],[.03,-.012],[-.022,-.004],null]};
+function body(b,face='front'){const [nx,ny]=b[0];return [...b.map(p=>[...p]),...FACE[face].map(o=>o?[nx+o[0],ny+o[1]]:null)]}
+const STAND=[[.5,.15],[.5,.25],[.41,.26],[.38,.40],[.37,.53],[.59,.26],[.62,.40],[.63,.53],[.45,.52],[.45,.70],[.45,.88],[.55,.52],[.55,.70],[.55,.88]];
+const tweak=(base,ch)=>base.map((p,i)=>ch[i]||p);
+function rot(pts,deg,cx,cy,sc){const a=deg*Math.PI/180,W=512,H=768;return pts.map(p=>{if(!p)return null;const x=(p[0]-cx)*W,y=(p[1]-cy)*H;return[.5+(x*Math.cos(a)-y*Math.sin(a))*sc/W,.5+(x*Math.sin(a)+y*Math.cos(a))*sc/H]})}
+const POSE_PRESETS={
+  'Standing':body(STAND),
+  'Walking':body(tweak(STAND,{3:[.43,.39],4:[.47,.50],6:[.60,.40],7:[.57,.52],9:[.47,.70],10:[.41,.87],13:[.60,.87]})),
+  'Running':body([[.55,.16],[.52,.25],[.43,.27],[.36,.35],[.41,.26],[.61,.26],[.67,.38],[.74,.33],[.46,.52],[.36,.63],[.28,.74],[.56,.52],[.62,.69],[.66,.88]],'right'),
+  'Sitting':body([[.5,.28],[.5,.37],[.41,.38],[.38,.50],[.42,.60],[.59,.38],[.62,.50],[.58,.60],[.45,.60],[.40,.68],[.40,.86],[.55,.60],[.60,.68],[.60,.86]]),
+  'Fighting stance':body([[.5,.17],[.5,.27],[.41,.28],[.37,.37],[.44,.28],[.59,.28],[.61,.38],[.55,.29],[.45,.53],[.37,.70],[.31,.88],[.55,.53],[.63,.70],[.69,.88]]),
+  'Pointing':body(tweak(STAND,{3:[.29,.27],4:[.17,.26]}),'left'),
+  'Hugging':body(tweak(STAND,{3:[.36,.38],4:[.47,.42],6:[.64,.38],7:[.53,.42]})),
+  'Looking back':[[.54,.15],[.5,.25],[.59,.26],[.62,.40],[.63,.53],[.41,.26],[.38,.40],[.37,.53],[.55,.52],[.55,.70],[.55,.88],[.45,.52],[.45,.70],[.45,.88],null,[.565,.138],[.49,.15],null],
+  'Falling':rot(body(tweak(STAND,{3:[.36,.17],4:[.33,.07],6:[.64,.17],7:[.67,.07],9:[.42,.69],10:[.47,.85]})),62,.5,.52,.8),
+  'Kneeling':body([[.5,.27],[.5,.37],[.41,.38],[.38,.51],[.40,.62],[.59,.38],[.62,.51],[.60,.62],[.45,.62],[.44,.84],[.32,.86],[.55,.62],[.62,.68],[.62,.86]]),
+};
+function drawSkel(ctx,J,W,H,{handles=false,active=-1}={}){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  const s=W/512;ctx.lineCap='round';
+  LIMBS.forEach(([a,b],i)=>{const p=J[a],q=J[b];if(!p||!q)return;ctx.strokeStyle=`rgba(${JC[i]},.72)`;ctx.lineWidth=10*s;ctx.beginPath();ctx.moveTo(p[0]*W,p[1]*H);ctx.lineTo(q[0]*W,q[1]*H);ctx.stroke()});
+  J.forEach((p,i)=>{if(!p)return;ctx.fillStyle=`rgb(${JC[i]})`;ctx.beginPath();ctx.arc(p[0]*W,p[1]*H,(handles?9:6)*s,0,7);ctx.fill();if(handles){ctx.lineWidth=2.5*s;ctx.strokeStyle=i===active?'#fff':'rgba(255,255,255,.55)';ctx.stroke()}});
+}
+function skelBlob(J){const c=document.createElement('canvas');c.width=512;c.height=768;drawSkel(c.getContext('2d'),J,512,768);return canvasBlob(c)}
+
+/* ---------- settings ---------- */
+const SET_KEY='pf-settings';
+const DEFAULT_SET={key:'',textModel:'gemini-2.5-flash',imageModel:'gemini-2.5-flash-image',variations:2};
+let SET={...DEFAULT_SET};
+try{SET={...DEFAULT_SET,...JSON.parse(localStorage.getItem(SET_KEY)||'{}')}}catch(e){}
+function storeSettings(){try{localStorage.setItem(SET_KEY,JSON.stringify(SET))}catch(e){toast('Could not save settings on this computer.')}}
+const hasAI=()=>!!SET.key;
+const noKey='Add your Gemini API key in Settings to use this.';
+
+/* ---------- Gemini ---------- */
+class AIError extends Error{constructor(code,msg){super(msg||code);this.code=code}}
+async function toB64(blob){const buf=new Uint8Array(await blob.arrayBuffer());let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));return btoa(s)}
+async function prepForAI(blob){
+  let bmp;try{bmp=await createImageBitmap(blob)}catch(e){throw new AIError('bad_image')}
+  const ok=/^image\/(png|jpeg|webp)$/.test(blob.type),big=Math.max(bmp.width,bmp.height),max=1600;
+  if(ok&&big<=max&&blob.size<4e6){bmp.close&&bmp.close();return blob}
+  const s=Math.min(1,max/big),c=document.createElement('canvas');c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);
+  c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+  return canvasBlob(c,blob.type==='image/png'?'image/png':'image/jpeg',.9);
+}
+async function imgPart(blob){const b=await prepForAI(blob);return{inlineData:{mimeType:b.type||'image/png',data:await toB64(b)}}}
+async function gemini(model,parts,config,signal){
+  if(!SET.key)throw new AIError('no_key');
+  let r;
+  try{r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':SET.key},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:config||{}}),signal})}
+  catch(e){throw new AIError(e&&e.name==='AbortError'?'cancelled':'network')}
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok){
+    const msg=(j.error&&j.error.message)||'';
+    const code=/api key/i.test(msg)||r.status===401||r.status===403?'bad_key':r.status===429?'rate_limited':r.status===404?'no_model':'upstream';
+    throw new AIError(code,msg);
+  }
+  const cand=(j.candidates||[])[0];
+  if(!cand)throw new AIError('refused',j.promptFeedback&&j.promptFeedback.blockReason);
+  return cand;
+}
+async function aiText(prompt,{images=[],json=false,signal}={}){
+  const parts=[{text:prompt}];for(const b of images)parts.push(await imgPart(b));
+  const cand=await gemini(SET.textModel,parts,json?{responseMimeType:'application/json'}:{},signal);
+  const text=((cand.content&&cand.content.parts)||[]).map(p=>p.text||'').join('').trim();
+  if(!text)throw new AIError(cand.finishReason==='SAFETY'?'refused':'empty');
+  if(!json)return text;
+  try{return JSON.parse(text)}catch(e){const m=text.match(/[[{][\s\S]*[\]}]/);if(m){try{return JSON.parse(m[0])}catch(_){}}throw new AIError('invalid_json')}
+}
+async function aiImage(prompt,images,aspect,signal){
+  const parts=[{text:prompt}];for(const b of images||[])parts.push(await imgPart(b));
+  const cfg={responseModalities:['TEXT','IMAGE']};if(aspect)cfg.imageConfig={aspectRatio:aspect};
+  const cand=await gemini(SET.imageModel,parts,cfg,signal);
+  const ps=(cand.content&&cand.content.parts)||[],p=ps.find(x=>x.inlineData&&x.inlineData.data);
+  if(!p)throw new AIError(cand.finishReason&&cand.finishReason!=='STOP'?'refused':'no_image',ps.map(x=>x.text||'').join(' '));
+  const bin=atob(p.inlineData.data),arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:p.inlineData.mimeType||'image/png'});
+}
+function aiErr(e){
+  const m={no_key:noKey,bad_key:'Gemini did not accept your API key. Check it in Settings.',rate_limited:'Gemini is busy, or your free quota is used up for now. Wait a minute and try again.',
+    no_model:'That Gemini model name was not found. Check the model names in Settings.',network:'Could not reach Gemini. Check your internet connection and try again.',
+    refused:'Gemini declined this request. Try rewording it.',no_image:'Gemini answered without a picture. Press the button again, or reword the panel.',
+    invalid_json:'Gemini answered in the wrong format. Press the button again.',empty:'Gemini returned an empty answer. Try again.',
+    bad_image:'That picture could not be read. Try a PNG or JPG.',cancelled:'Stopped.'};
+  return m[e&&e.code]||('Something went wrong with Gemini'+(e&&e.message?': '+trunc(e.message,140):'.'));
+}
+
+/* ---------- on-device storage ---------- */
+const idb=(()=>{
+  let dbp=null;
+  const open=()=>dbp||(dbp=new Promise((res,rej)=>{const r=indexedDB.open('panel-forge',1);r.onupgradeneeded=()=>{const d=r.result;['projects','blobs','kv'].forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s)})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+  async function tx(store,mode,fn){const d=await open();return new Promise((res,rej)=>{const t=d.transaction(store,mode),q=fn(t.objectStore(store));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
+  return{get:(s,k)=>tx(s,'readonly',x=>x.get(k)),put:(s,k,v)=>tx(s,'readwrite',x=>x.put(v,k)),del:(s,k)=>tx(s,'readwrite',x=>x.delete(k)),all:s=>tx(s,'readonly',x=>x.getAll())};
+})();
+let DB=true;
+
+/* ---------- images ---------- */
+const urlCache=new Map();
+const isRef=s=>typeof s==='string'&&s.startsWith('pf-img:');
+function urlOf(ref){return ref&&urlCache.get(ref)||''}
+async function blobOf(ref){const b=isRef(ref)?await idb.get('blobs',ref.slice(7)):null;if(!b)throw new Error('missing');return b}
+async function hydrate(obj){
+  const refs=new Set();const walk=o=>{if(Array.isArray(o))o.forEach(walk);else if(o&&typeof o==='object')Object.values(o).forEach(walk);else if(isRef(o)&&!urlCache.has(o))refs.add(o)};walk(obj);
+  await Promise.all([...refs].map(async r=>{try{urlCache.set(r,URL.createObjectURL(await blobOf(r)))}catch(e){}}));
+}
+function canvasBlob(c,type='image/png',q){return new Promise(r=>c.toBlob(r,type,q))}
+function loadImg(url){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url})}
+async function normalizeImage(file){
+  let bmp;try{bmp=await createImageBitmap(file)}catch(e){throw new Error('unreadable')}
+  const okType=/^image\/(png|jpeg|webp)$/.test(file.type),big=Math.max(bmp.width,bmp.height),max=2400;
+  if(okType&&big<=max&&file.size<15e6){bmp.close&&bmp.close();return file}
+  const s=Math.min(1,max/big),c=document.createElement('canvas');c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);
+  c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+  return canvasBlob(c,file.type==='image/jpeg'?'image/jpeg':'image/png',.92);
+}
+async function putImage(file){
+  const blob=await normalizeImage(file),id=uid()+uid(),ref='pf-img:'+id;
+  try{await idb.put('blobs',id,blob)}catch(e){toast('This computer is out of storage space for pictures. Free some space and try again.');throw e}
+  urlCache.set(ref,URL.createObjectURL(blob));return ref;
+}
+const imgFiles=files=>[...(files||[])].filter(f=>f&&/^image\//.test(f.type));
+
+/* ---------- state ---------- */
+let P=null,LIB={chars:[]},PROJECTS=[];
+const ui={sel:0,bub:null,busy:{},gen:null,stop:null};
+function defaultChars(){return[
+  {id:'jirad',name:'JIRAD',accent:'#d8a540',desc:'Male. ',refs:{front:null,side:null,back:null,face:null},seed:null},
+  {id:'roven',name:'ROVEN',accent:'#c7743a',desc:'Female. ',refs:{front:null,side:null,back:null,face:null},seed:null},
+]}
+function newPanel(p){return{id:uid(),shot:'med',poseId:p.poses[0]?p.poses[0].id:null,chars:[...p.cast],line:'',mood:'',outfitOverride:false,outfitNote:'',space:'top',size:'standard',variations:[],chosen:-1,history:[],h:-1,bubbles:[],veo:null}}
+function panelCount(p){return p.mode==='manga'?MANGA[p.layout.manga].r.length:p.stripCount}
+function ensurePanels(p){while(p.panels.length<panelCount(p))p.panels.push(newPanel(p))}
+function newProject(example){
+  const p={id:uid(),name:example?'Rooftop pendant':'Untitled chapter',mode:'manga',step:1,updated:Date.now(),
+    source:{ref:null,analysis:{subject:'',outfit:'',setting:'',lighting:'',mood:''},realPerson:false,permission:false},
+    poses:[],poseSel:null,layout:{manga:'4',manhwa:'opening'},stripCount:4,gutter:100,
+    look:{line:'medium',shading:'medium',bg:'simple'},
+    palette:['#1c2240','#3a5a8a','#e6bf78','#c7743a','#f3ede2','#6a3a4a'],
+    scene:{text:example?EXAMPLE_SCENE:'',mood:example?'quiet, rainy, city lights':''},cast:['jirad','roven'],panels:[]};
+  ['Standing','Looking back','Pointing'].forEach(n=>p.poses.push({id:uid(),name:n,kind:'openpose',joints:clone(POSE_PRESETS[n]),preset:n}));
+  p.poseSel=p.poses[0].id;
+  ensurePanels(p);
+  MANHWA.opening.sizes.forEach((s,i)=>{if(p.panels[i])p.panels[i].size=s});
+  if(example){
+    const plan=[
+      ['wide','Rainy rooftop at night, city lights far below',[],0],
+      ['med','ROVEN stands at the edge, looking down at the city',['roven'],0],
+      ['cu','ROVEN turns around, surprised',['roven'],1],
+      ['med','JIRAD holds out the lost pendant',['jirad'],2],
+    ];
+    plan.forEach(([shot,line,chars,pose],i)=>Object.assign(p.panels[i],{shot,line,chars,poseId:p.poses[pose].id}));
+    p.panels[3].bubbles.push(newBubble('speech',p,0,'You dropped this.'));
+  }
+  return p;
+}
+function migrate(d){
+  const b=newProject(false);
+  const p={...b,...d};
+  p.look={...b.look,...(d.look||{})};p.layout={...b.layout,...(d.layout||{})};
+  p.source={...b.source,...(d.source||{})};p.source.analysis={...b.source.analysis,...((d.source||{}).analysis||{})};
+  p.scene={...b.scene,...(d.scene||{})};
+  p.panels=(d.panels||[]).map(x=>({...newPanel(p),...x}));
+  ensurePanels(p);return p;
+}
+const selPanel=()=>P.panels[ui.sel];
+const charById=id=>LIB.chars.find(c=>c.id===id);
+const poseById=id=>P.poses.find(p=>p.id===id);
+const cur=pn=>pn&&pn.h>=0&&pn.history[pn.h]?pn.history[pn.h].ref:null;
+function selBubble(){if(!ui.bub)return null;for(const pn of P.panels){const b=pn.bubbles.find(x=>x.id===ui.bub);if(b)return b}return null}
+
+/* ---------- layout geometry ---------- */
+function layoutRects(p){
+  if(p.mode==='manga'){const {w,h,m}=PAGE_M,iw=w-2*m,ih=h-2*m;return MANGA[p.layout.manga].r.map(([x,y,rw,rh])=>({x:m+x*iw,y:m+y*ih,w:rw*iw,h:rh*ih}))}
+  const out=[];let y=STRIP_PAD;
+  for(let i=0;i<p.stripCount;i++){const s=(p.panels[i]&&SIZES[p.panels[i].size])?p.panels[i].size:'standard';const h=SIZES[s].h;out.push({x:0,y,w:STRIP_W,h});y+=h+p.gutter}
+  return out;
+}
+function pageSize(p){if(p.mode==='manga')return{w:PAGE_M.w,h:PAGE_M.h};const r=layoutRects(p),l=r[r.length-1];return{w:STRIP_W,h:(l?l.y+l.h:0)+STRIP_PAD}}
+function ratioLabel(r){const a=r.w/r.h,opts=[['1:1',1],['4:3',4/3],['3:4',3/4],['3:2',1.5],['2:3',2/3],['16:9',16/9],['9:16',9/16],['4:5',.8],['5:4',1.25],['21:9',21/9]];return opts.reduce((b,o)=>Math.abs(o[1]-a)<Math.abs(b[1]-a)?o:b)[0]}
+
+/* ---------- lettering geometry ---------- */
+const mctx=document.createElement('canvas').getContext('2d');
+function wrapText(text,font,maxW){
+  mctx.font=font;const out=[];
+  for(const para of String(text).split('\n')){
+    let line='';
+    for(let wd of para.split(/(\s+)/)){
+      if(!wd)continue;
+      if(/^\s+$/.test(wd)){if(line)line+=' ';continue}
+      while(mctx.measureText(wd).width>maxW&&wd.length>1){
+        if(line.trim()){out.push(line.trimEnd());line=''}
+        let k=wd.length-1;while(k>1&&mctx.measureText(wd.slice(0,k)).width>maxW)k--;
+        out.push(wd.slice(0,k));wd=wd.slice(k);
+      }
+      const t=line+wd;
+      if(mctx.measureText(t).width>maxW&&line.trim()){out.push(line.trimEnd());line=wd}else line=t;
+    }
+    out.push(line.trimEnd());
+  }
+  return out.length?out:[''];
+}
+const ell=(cx,cy,rx,ry)=>`M${f1(cx-rx)} ${f1(cy)}a${f1(rx)} ${f1(ry)} 0 1 0 ${f1(2*rx)} 0a${f1(rx)} ${f1(ry)} 0 1 0 ${f1(-2*rx)} 0Z`;
+function tailTri(cx,cy,rx,ry,tx,ty,spread){
+  const t=Math.atan2((ty-cy)/ry,(tx-cx)/rx),p=a=>`${f1(cx+rx*.84*Math.cos(a))} ${f1(cy+ry*.84*Math.sin(a))}`;
+  return `M${p(t-spread)}L${f1(tx)} ${f1(ty)}L${p(t+spread)}Z`;
+}
+function newBubble(type,p,slot=0,text){
+  const T=BTYPES[type],rtl=p.mode==='manga';
+  const slots=rtl?[[.74,.16],[.28,.2],[.72,.8]]:[[.28,.16],[.72,.22],[.3,.8]];
+  const [bx,by]=type==='sfx'?[.5,.5]:slots[slot%3];
+  return{id:uid(),type,text:text||({speech:'Say something…',thought:'Thinking…',shout:'HEY!',narration:'Meanwhile…',sfx:'BOOM'}[type]),
+    font:T.font,size:T.size,caps:false,bx,by,bw:type==='narration'?.46:.38,tx:bx+(.5-bx)*.6,ty:by<.5?by+.3:by-.3,tail:true,color:'#111111'};
+}
+function bubGeom(b,r){
+  const F=FONTS[b.font]||FONTS.comic,size=+b.size||26,font=`${F.w} ${size}px ${F.fam}`;
+  const text=b.caps?String(b.text).toUpperCase():String(b.text);
+  const cx=r.x+b.bx*r.w,cy=r.y+b.by*r.h,w=Math.max(70,b.bw*r.w),lh=size*1.16,t=b.type;
+  const inner={speech:.72,thought:.66,shout:.58,narration:1}[t];
+  const lines=t==='sfx'?text.split('\n'):wrapText(text||' ',font,t==='narration'?w-32:w*inner);
+  let h;
+  if(t==='narration')h=lines.length*lh+26;
+  else if(t==='sfx')h=lines.length*lh;
+  else h=Math.max(64,lines.length*lh/({speech:.64,thought:.6,shout:.5}[t])+18);
+  const rx=w/2,ry=h/2,tx=r.x+b.tx*r.w,ty=r.y+b.ty*r.h,stroke=[],fill=[];
+  const outside=((tx-cx)/rx)**2+((ty-cy)/ry)**2>1.15;
+  const hasTail=b.tail!==false&&outside&&(t==='speech'||t==='shout'||t==='thought');
+  if(t==='speech'){const e=ell(cx,cy,rx,ry);stroke.push(e);fill.push(e);if(hasTail){const tt=tailTri(cx,cy,rx,ry,tx,ty,.26);stroke.push(tt);fill.push(tt)}}
+  else if(t==='shout'){
+    const n=16;let d='';for(let k=0;k<2*n;k++){const a=k/(2*n)*Math.PI*2,f=k%2?.84:1.14;d+=(k?'L':'M')+f1(cx+rx*f*Math.cos(a))+' '+f1(cy+ry*f*Math.sin(a))}d+='Z';
+    stroke.push(d);fill.push(d);if(hasTail){const tt=tailTri(cx,cy,rx,ry,tx,ty,.14);stroke.push(tt);fill.push(tt)}
+  }
+  else if(t==='thought'){
+    const n=Math.max(8,Math.round((rx+ry)*Math.PI/44)),rr=(rx+ry)*Math.PI/n*.72;
+    for(let k=0;k<n;k++){const a=k/n*Math.PI*2;const c=ell(cx+rx*.9*Math.cos(a),cy+ry*.9*Math.sin(a),rr,rr);stroke.push(c);fill.push(c)}
+    fill.push(ell(cx,cy,rx*.95,ry*.95));
+    if(hasTail){const a=Math.atan2((ty-cy)/ry,(tx-cx)/rx),ex=cx+rx*1.08*Math.cos(a),ey=cy+ry*1.08*Math.sin(a);
+      [[.3,.42],[.64,.3],[1,.2]].forEach(([k,s])=>{const c=ell(ex+(tx-ex)*k,ey+(ty-ey)*k,size*s,size*s);stroke.push(c);fill.push(c)})}
+  }
+  else if(t==='narration'){const d=`M${f1(cx-rx)} ${f1(cy-ry)}h${f1(w)}v${f1(h)}h${f1(-w)}Z`;stroke.push(d);fill.push(d)}
+  let tw=0;if(t==='sfx'){mctx.font=font;tw=Math.max(...lines.map(l=>mctx.measureText(l).width))}
+  return{cx,cy,w,h,rx,ry,lines,lh,font,F,size,stroke,fill,tx,ty,hasTail,tw,type:t,color:b.color||'#111111'};
+}
+function bubbleSVG(g,sel,key){
+  let s=`<g data-bub="${key}" class="bub">`;
+  if(g.type==='sfx'){
+    const y0=g.cy-(g.lines.length-1)*g.lh/2;
+    s+=`<g transform="rotate(-8 ${f1(g.cx)} ${f1(g.cy)})">`+g.lines.map((l,i)=>`<text x="${f1(g.cx)}" y="${f1(y0+i*g.lh)}" text-anchor="middle" dominant-baseline="central" font-family="${esc(g.F.fam)}" font-weight="${g.F.w}" font-size="${g.size}" fill="${esc(g.color)}" stroke="#fff" stroke-width="${f1(g.size*.14)}" stroke-linejoin="round" paint-order="stroke">${esc(l)}</text>`).join('')+'</g>';
+  }else{
+    s+=g.stroke.map(d=>`<path d="${d}" fill="none" stroke="#111" stroke-width="6" stroke-linejoin="round"/>`).join('');
+    s+=g.fill.map(d=>`<path d="${d}" fill="#fff"/>`).join('');
+    const y0=g.cy-(g.lines.length-1)*g.lh/2;
+    s+=g.lines.map((l,i)=>`<text x="${f1(g.cx)}" y="${f1(y0+i*g.lh)}" text-anchor="middle" dominant-baseline="central" font-family="${esc(g.F.fam)}" font-weight="${g.F.w}" font-size="${g.size}" fill="#111">${esc(l)}</text>`).join('');
+  }
+  if(sel){
+    const w=g.type==='sfx'?g.tw+20:g.w,h=g.type==='sfx'?g.h+10:g.h;
+    s+=`<rect x="${f1(g.cx-w/2-8)}" y="${f1(g.cy-h/2-8)}" width="${f1(w+16)}" height="${f1(h+16)}" fill="none" stroke="#d8a540" stroke-width="3" stroke-dasharray="10 7" pointer-events="none"/>`;
+    s+=`<rect data-h="size" x="${f1(g.cx+w/2-4)}" y="${f1(g.cy-12)}" width="24" height="24" rx="4" fill="#d8a540" stroke="#1c1405" stroke-width="2"><title>Drag to resize</title></rect>`;
+    if(g.type==='speech'||g.type==='shout'||g.type==='thought')s+=`<circle data-h="tail" cx="${f1(g.tx)}" cy="${f1(g.ty)}" r="14" fill="#d8a540" stroke="#1c1405" stroke-width="3"><title>Drag to point the tail</title></circle>`;
+  }
+  return s+'</g>';
+}
+function drawBubble(x,g){
+  x.save();
+  if(g.type==='sfx'){
+    x.translate(g.cx,g.cy);x.rotate(-8*Math.PI/180);x.font=g.font;x.textAlign='center';x.textBaseline='middle';x.lineJoin='round';
+    const y0=-(g.lines.length-1)*g.lh/2;
+    g.lines.forEach((l,i)=>{x.lineWidth=g.size*.28;x.strokeStyle='#fff';x.strokeText(l,0,y0+i*g.lh);x.fillStyle=g.color;x.fillText(l,0,y0+i*g.lh)});
+  }else{
+    x.lineWidth=6;x.lineJoin='round';x.strokeStyle='#111';g.stroke.forEach(d=>x.stroke(new Path2D(d)));
+    x.fillStyle='#fff';g.fill.forEach(d=>x.fill(new Path2D(d)));
+    x.fillStyle='#111';x.font=g.font;x.textAlign='center';x.textBaseline='middle';
+    const y0=g.cy-(g.lines.length-1)*g.lh/2;g.lines.forEach((l,i)=>x.fillText(l,g.cx,y0+i*g.lh));
+  }
+  x.restore();
+}
+function readingOrder(pn){const rtl=P.mode==='manga';return[...pn.bubbles].sort((a,b)=>(a.by-(rtl?a.bx:-a.bx)*.45)-(b.by-(rtl?b.bx:-b.bx)*.45))}
+
+/* ---------- prompt builder ---------- */
+function buildPrompt(pn){
+  const i=P.panels.indexOf(pn),rects=layoutRects(P),r=rects[i];
+  const chars=pn.chars.map(charById).filter(Boolean),pose=poseById(pn.poseId),A=P.source.analysis;
+  const L=P.look,out=[];
+  if(P.mode==='manga')out.push(`MANGA panel. Black and white only: clean ink lines (${L.line} line weight), screentone shading (${L.shading} intensity), speed lines where there is motion, dramatic solid blacks. No colour.`);
+  else out.push(`MANHWA / WEBTOON panel. Full colour: soft cel shading (${L.shading} intensity), glowing highlights, cinematic lighting, ${L.line} line weight. Keep to this colour palette: ${P.palette.join(', ')}.`);
+  if(chars.length){
+    chars.forEach(c=>{
+      let s=`Character: ${c.name}, ${c.desc.trim()||'(no description yet)'}. Match the attached reference pictures of ${c.name} exactly (same face, hair, outfit, colours).`;
+      if(c.seed)s+=` Also match ${c.name}'s approved seed panel.`;
+      s+=pn.outfitOverride?` Outfit change allowed in this panel only: ${pn.outfitNote||'as described in the action'}.`:' Keep the outfit exactly as in the references.';
+      out.push(s);
+    });
+  }else if(A.subject)out.push(`Subject: ${A.subject}${A.outfit?', wearing '+A.outfit:''}.`);
+  if(pose){
+    let s=`Pose: follow the attached pose reference precisely: ${pose.name} (${POSE_KINDS[pose.kind]||'reference'}).`;
+    if(pose.kind==='openpose')s+=' The coloured stick figure is an OpenPose skeleton; match every limb angle, and do not draw the skeleton itself.';
+    out.push(s);
+  }
+  out.push(`Shot: ${SHOTS[pn.shot]||'Medium shot'}.`);
+  const setting=A.setting||'';out.push(`Setting: ${setting||'from the scene description'}${P.look.bg==='none'?' (keep the background plain or empty)':P.look.bg==='simple'?' (simple background)':' (fully detailed background)'}.`);
+  const mood=[pn.mood||P.scene.mood,A.lighting].filter(Boolean).join('; ');if(mood)out.push(`Mood/lighting: ${mood}.`);
+  out.push(`Action: ${pn.line||'(describe what happens in this panel)'}.`);
+  if(P.scene.text)out.push(`Story context: ${P.scene.text}`);
+  out.push(`Image shape: about ${ratioLabel(r)} (${Math.round(r.w)}×${Math.round(r.h)}).`);
+  out.push(`Rules: no text, no speech bubbles, no sound-effect lettering, no watermarks, no panel borders inside the image.${pn.space!=='none'?` Leave clean, uncluttered space at the ${SPACES[pn.space].toLowerCase()} for lettering.`:''} Original characters only; do not imitate any named artist or existing manga/manhwa character.`);
+  const att=attachments(pn).map((a,k)=>`${k+1}) ${a.label}`);
+  if(att.length)out.push(`Attached: ${att.join('; ')}.`);
+  return out.join('\n');
+}
+function attachments(pn){
+  const a=[];
+  if(P.source.ref)a.push({label:'source picture',ref:P.source.ref,file:'01-source'});
+  const pose=poseById(pn.poseId);
+  if(pose)a.push({label:`pose reference (${pose.name})`,ref:pose.ref||null,joints:pose.joints||null,file:'02-pose'});
+  pn.chars.map(charById).filter(Boolean).forEach(c=>{
+    Object.entries(c.refs).forEach(([k,v])=>{if(v)a.push({label:`${c.name} ${k} reference`,ref:v,file:`03-${c.name.toLowerCase()}-${k}`})});
+    if(c.seed)a.push({label:`${c.name} seed panel`,ref:c.seed,file:`04-${c.name.toLowerCase()}-seed`});
+  });
+  return a;
+}
+
+/* ---------- saving ---------- */
+let dirty=false,libDirty=false,saving=false,again=false,saveT=null,lastSaved=null,exampleUntouched=true,persistAsked=false;
+function setSave(s){const el=$('#saveState');if(!el)return;const m={saved:'Saved on this computer'+(lastSaved?' '+lastSaved.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):''),saving:'Saving…',unsaved:'Unsaved changes',error:'Save failed. Will retry.'};el.textContent=m[s]||'';el.classList.toggle('bad',s==='error')}
+function markDirty(lib){dirty=true;exampleUntouched=false;if(lib)libDirty=true;setSave('unsaved');clearTimeout(saveT);saveT=setTimeout(saveNow,2000)}
+async function saveNow(){
+  if(saving){again=true;return}
+  saving=true;const wasLib=libDirty;dirty=false;libDirty=false;setSave('saving');
+  try{
+    P.updated=Date.now();
+    await idb.put('projects',P.id,clone(P));
+    if(wasLib)await idb.put('kv','library',{chars:clone(LIB.chars)});
+    try{localStorage.setItem('pf-last',P.id)}catch(e){}
+    if(!persistAsked&&navigator.storage&&navigator.storage.persist){persistAsked=true;navigator.storage.persist().catch(()=>{})}
+    lastSaved=new Date();setSave('saved');
+    const it=PROJECTS.find(x=>x.id===P.id);if(it)it.name=P.name;else{PROJECTS.unshift({id:P.id,name:P.name});renderTop()}
+  }catch(e){dirty=true;if(wasLib)libDirty=true;setSave('error');clearTimeout(saveT);saveT=setTimeout(saveNow,15000)}
+  saving=false;if(again){again=false;saveNow()}
+}
+setInterval(()=>{if(dirty)saveNow()},60000);
+window.addEventListener('pagehide',()=>{if(dirty)saveNow()});
+async function loadProject(id){
+  try{const d=await idb.get('projects',id);if(!d){toast('That project could not be found.');return}
+    P=migrate(d);await hydrate(P);ui.sel=0;ui.bub=null;dirty=false;try{localStorage.setItem('pf-last',P.id)}catch(e){}
+    lastSaved=new Date(P.updated);renderAll();setSave('saved');
+  }catch(e){toast('Could not open that project. Try again.')}
+}
+async function refreshProjects(){const all=(await idb.all('projects'))||[];PROJECTS=all.sort((a,b)=>(b.updated||0)-(a.updated||0)).map(p=>({id:p.id,name:p.name||'Untitled'}))}
+
+/* ---------- rendering ---------- */
+function renderAll(){renderTop();renderSteps();renderLeft();renderCenter();renderRight()}
+function renderTop(){
+  const opts=PROJECTS.length?PROJECTS.map(p=>`<option value="${esc(p.id)}" ${p.id===P.id?'selected':''}>${esc(trunc(p.name,28))}</option>`).join(''):`<option>${esc(P.name)}</option>`;
+  $('#top').innerHTML=`
+  <div class="brand" title="Panel Forge"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Panel Forge</div>
+  <div class="proj">
+    <label class="sr" for="projName">Project name</label>
+    <input id="projName" type="text" value="${esc(P.name)}" data-f="p.name" data-r="projname" title="Name of this project">
+    <label class="sr" for="projPick">Open another project</label>
+    <select id="projPick" data-act="pickProject" title="Open another saved project" ${PROJECTS.length?'':'disabled'}>${opts}</select>
+    <button class="btn sm" data-act="newProject" title="Start a new, empty project">New</button>
+  </div>
+  <div class="modes" role="group" aria-label="Style mode">
+    <button data-act="setMode" data-v="manga" class="${P.mode==='manga'?'on':''}" title="Black and white, screentones, reads right to left">Manga <span lang="ja">漫画</span></button>
+    <button data-act="setMode" data-v="manhwa" class="${P.mode==='manhwa'?'on':''}" title="Full colour vertical strip for webtoon">Manhwa <span lang="ko">만화</span></button>
+  </div>
+  <div class="savebox"><span class="savestate" id="saveState"></span>
+    <button class="btn sm" data-act="install" id="installBtn" ${installEvt?'':'hidden'} title="Install Panel Forge as an app on this computer">Install app</button>
+    <button class="btn sm" data-act="delProject" title="Delete this project from this computer">Delete</button>
+    <button class="btn sm" data-act="openSettings" title="Gemini API key and models">Settings</button>
+    <button class="btn sm gold" data-act="saveNow" title="Save this project now. It also saves by itself every minute. For Google Drive, use step 8.">Save</button></div>`;
+  setSave(dirty?'unsaved':'saved');
+  const kb=$('#keybar');if(kb)kb.hidden=hasAI();
+}
+function stepDone(n){
+  const vis=P.panels.slice(0,panelCount(P));
+  return[!!P.source.ref,P.poses.some(p=>!p.pending),P.cast.length>0&&P.cast.every(id=>{const c=charById(id);return c&&Object.values(c.refs).some(Boolean)}),vis.some(p=>p.line),vis.length>0&&vis.every(p=>cur(p)),vis.some(p=>p.history.length>1),vis.some(p=>p.bubbles.length),!!P.exported,vis.length>0&&vis.every(p=>p.veo&&p.veo.prompt)][n-1];
+}
+function renderSteps(){
+  $('#steps').innerHTML=STEPS.map(([n,t],i)=>`<button class="step ${P.step===i+1?'on':''} ${stepDone(i+1)?'done':''}" data-act="goStep" data-v="${i+1}" title="${esc(t)}" ${P.step===i+1?'aria-current="step"':''}><span class="n">${i+1}</span><span class="lbl">${n}</span></button>`).join('');
+}
+function renderLeft(){
+  const n=P.step,[name,help]=STEPS[n-1];
+  let body='';
+  try{body=[null,stepUpload,stepPose,stepChars,stepLayout,stepGenerate,stepRefine,stepLetter,stepExport,stepAnimate][n]()}catch(e){console.error(e);body='<p class="note bad">Something went wrong drawing this step.</p>'}
+  $('#left').innerHTML=`<div class="eyebrow">Step ${n} of 9</div><h2>${name}</h2><p class="lead">${help}</p>${body}
+  <div class="stepnav"><button class="btn" data-act="goStep" data-v="${n-1}" ${n<=1?'disabled':''}>← Back</button><button class="btn gold" data-act="goStep" data-v="${n+1}" ${n>=9?'disabled':''}>Next: ${n<9?STEPS[n][0]:''} →</button></div>`;
+  afterLeft();
+}
+function afterLeft(){
+  $$('canvas[data-skel]').forEach(c=>{const p=poseById(c.dataset.skel);if(p&&p.joints)drawSkel(c.getContext('2d'),p.joints,c.width,c.height)});
+  const ed=$('#poseEd');if(ed)drawEditor();
+}
+const aiBtn=(act,label,extra='')=>`<button class="btn big gold" data-act="${act}" ${hasAI()?'':'disabled'} ${extra}>${label}</button>${hasAI()?'':`<p class="small muted">${noKey} <button class="btn sm" data-act="openSettings">Open Settings</button></p>`}`;
+const dropZone=(act,title,sub,multi)=>`<label class="drop" data-drop="${act}"><input type="file" class="sr" accept="image/*" data-act="${act}" ${multi?'multiple':''}><b>${title}</b><span class="small">${sub}</span></label>`;
+
+/* step 1 */
+function stepUpload(){
+  const S=P.source,A=S.analysis,u=urlOf(S.ref);
+  const field=(k,l,ph)=>`<label class="f"><span>${l}</span><textarea rows="2" data-f="p.source.analysis.${k}" data-r="prompt" placeholder="${esc(ph)}">${esc(A[k])}</textarea></label>`;
+  return `<div class="sec first">
+    ${u?`<div class="img-box"><img src="${esc(u)}" alt="Source picture"></div><div class="row"><label class="btn sm grow"><input type="file" class="sr" accept="image/*" data-act="upSource">Replace picture</label><button class="btn sm ghost danger" data-act="clearSource">Remove</button></div>`
+      :dropZone('upSource','Drop a picture here','Photo, sketch, AI render or screenshot. Click to choose, or paste with Ctrl+V.')}
+  </div>
+  ${S.realPerson?`<div class="note warn"><b>This looks like a real person.</b> Only use photos of people who have given you permission.<label class="check" style="margin-top:8px"><input type="checkbox" data-f="p.source.permission" ${S.permission?'checked':''}><span>I have their permission</span></label></div>`:''}
+  <div class="sec">
+    <h3>What Gemini sees</h3>
+    ${aiBtn('analyze','Read this picture',S.ref?'':'disabled')}
+    ${!S.ref?'<p class="small muted">Add a picture first. You can also fill these in yourself.</p>':''}
+    ${field('subject','Subject','Who or what is in the picture')}
+    ${field('outfit','Outfit','Clothes, colours, accessories')}
+    ${field('setting','Setting','Place, time of day, weather')}
+    ${field('lighting','Lighting','Where the light comes from, how bright')}
+    ${field('mood','Mood','The feeling of the picture')}
+  </div>`;
+}
+/* step 2 */
+function stepPose(){
+  const sel=poseById(P.poseSel),src=urlOf(P.source.ref);
+  const card=p=>`<button class="pose-card ${p.id===P.poseSel?'on':''}" data-act="selPose" data-id="${p.id}" title="${esc(p.name)} · ${esc(POSE_KINDS[p.kind]||'')}">
+    ${p.joints?`<canvas width="64" height="96" data-skel="${p.id}"></canvas>`:`<img src="${esc(urlOf(p.ref))}" alt="">`}
+    <span class="nm">${esc(p.name)}</span>${p.pending?'<span class="tag warn">Check me</span>':`<span class="tag">${esc((POSE_KINDS[p.kind]||'').split(' ')[0])}</span>`}</button>`;
+  let s=`<div class="sec first"><h3>Preview</h3><div class="grid2">
+    <div class="thumb" style="--ar:2/3">${src?`<img src="${esc(src)}" alt="Source picture">`:'No source picture'}</div>
+    <div class="thumb" style="--ar:2/3">${sel?(sel.joints?`<canvas width="200" height="300" data-skel="${sel.id}" style="width:100%;height:100%"></canvas>`:`<img src="${esc(urlOf(sel.ref))}" alt="Pose" style="object-fit:contain;background:#000">`):'No pose chosen'}</div></div></div>
+  <div class="sec"><h3>Your poses</h3><div class="pose-list">${P.poses.map(card).join('')}</div>`;
+  if(sel){
+    s+=`<div class="stack">
+      ${sel.pending?`<div class="note gold"><b>Check this stick figure.</b> Gemini made it from your photo. Drag any joint that is off, then keep it.<div class="row" style="margin-top:8px"><button class="btn sm gold" data-act="keepPose">Keep this pose</button><button class="btn sm ghost danger" data-act="discardPose">Discard</button></div></div>`:''}
+      <label class="f"><span>Pose name</span><input type="text" data-f="pose:${sel.id}.name" data-r="prompt" value="${esc(sel.name)}"></label>
+      ${sel.ref?`<label class="f"><span>File type</span><select data-f="pose:${sel.id}.kind" data-r="prompt">${Object.entries(POSE_KINDS).map(([k,v])=>`<option value="${k}" ${sel.kind===k?'selected':''}>${v}</option>`).join('')}</select><small>Detected automatically. Change it if it's wrong.</small></label>`:''}
+      <div class="row"><button class="btn sm gold grow" data-act="usePose" ${sel.pending?'disabled':''} title="Use this pose for the selected panel">Use for panel ${ui.sel+1}</button><button class="btn sm" data-act="dupPose" title="Make an editable copy">Copy</button><button class="btn sm ghost danger" data-act="delPose">Delete</button></div>
+    </div>`;
+  }
+  s+=`</div>
+  <div class="sec"><h3>A · Upload from Pose Studio</h3>
+    ${dropZone('upPose','Drop pose files here','Clean PNG, OpenPose skeleton, depth, silhouette or line art. The type is detected for you.',true)}</div>
+  <div class="sec"><h3>B · Build a stick figure</h3>
+    <div class="presets">${Object.keys(POSE_PRESETS).map(k=>`<button class="chip" data-act="preset" data-v="${esc(k)}" title="Load the ${esc(k.toLowerCase())} pose">${esc(k)}</button>`).join('')}</div>
+    ${sel&&sel.joints?`<canvas id="poseEd" width="512" height="768" aria-label="Pose editor: drag the joints"></canvas>
+      <p class="small muted">Drag the dots to move joints. Red and orange are the right arm, green is the right leg, blue is the left leg.</p>
+      <div class="row"><button class="btn sm grow" data-act="mirror" title="Flip left and right">Mirror</button><button class="btn sm grow" data-act="savePosePng" title="Download this skeleton as a PNG for Gemini">Save as PNG</button></div>`
+      :`<button class="btn" data-act="newStick">New stick figure</button>`}
+  </div>
+  <div class="sec"><h3>C · A photo of you posing</h3>
+    <p class="small muted">Take a photo with your phone or webcam and upload it. Gemini turns it into a stick figure for you to check before it's used.</p>
+    ${hasAI()?dropZone('posePhoto','Upload a posing photo','Full body in frame works best.'):`<p class="small muted">${noKey}</p>`}
+  </div>`;
+  return s;
+}
+let edDrag=-1;
+function drawEditor(){const c=$('#poseEd'),p=poseById(P.poseSel);if(!c||!p||!p.joints)return;drawSkel(c.getContext('2d'),p.joints,512,768,{handles:true,active:edDrag})}
+/* step 3 */
+function stepChars(){
+  const slotNames={front:'Front',side:'Side',back:'Back',face:'Face'};
+  return `<div class="sec first stack">${LIB.chars.map(c=>{
+    const has=Object.values(c.refs).some(Boolean),inCast=P.cast.includes(c.id);
+    return `<div class="char">
+      <div class="char-head"><input type="color" value="${esc(c.accent)}" data-f="ch:${c.id}.accent" data-r="right" title="Accent colour"><input type="text" value="${esc(c.name)}" data-f="ch:${c.id}.name" data-r="prompt" aria-label="Character name"></div>
+      <label class="check"><input type="checkbox" data-act="toggleCast" data-id="${c.id}" ${inCast?'checked':''}><span>In this project</span></label>
+      <label class="f"><span>Description</span><textarea rows="3" data-f="ch:${c.id}.desc" data-r="prompt" placeholder="Hair, eyes, build, outfit, accessories">${esc(c.desc)}</textarea><small>Include hair, eyes, build, outfit and accessories. This text goes into every prompt.</small></label>
+      <div class="grid4">${Object.keys(slotNames).map(k=>`<label class="slot" title="${slotNames[k]} reference picture">${c.refs[k]?`<img src="${esc(urlOf(c.refs[k]))}" alt=""><button class="x" data-act="clrRef" data-id="${c.id}" data-v="${k}" title="Remove">×</button>`:'+'}<input type="file" class="sr" accept="image/*" data-act="upRef" data-id="${c.id}" data-v="${k}"><span class="lb">${slotNames[k]}</span></label>`).join('')}</div>
+      ${has?'':`<p class="note warn small"><b>No reference pictures yet.</b> Add at least a front view so ${esc(c.name)} looks the same in every panel.</p>`}
+      <div class="row"><span class="small muted grow">${c.seed?'Seed panel is set':'No seed panel yet. Set one in step 5 after you pick a panel you like.'}</span>${c.seed?`<img src="${esc(urlOf(c.seed))}" alt="Seed panel" style="width:40px;height:40px;object-fit:cover;border-radius:6px"><button class="btn sm ghost" data-act="clrSeed" data-id="${c.id}">Clear</button>`:''}</div>
+      <button class="btn sm ghost danger" data-act="delChar" data-id="${c.id}" style="justify-self:start">Delete character</button>
+    </div>`}).join('')}
+    <button class="btn" data-act="addChar">+ Add character</button>
+    <p class="small muted">Characters are shared by all your projects.</p></div>`;
+}
+/* step 4 */
+function layThumb(rects,w,h){return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><rect width="${w}" height="${h}" fill="#f4f1ea"/>${rects.map(r=>`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="#2a2830" stroke="#111" stroke-width="6"/>`).join('')}</svg>`}
+function stepLayout(){
+  const L=P.look,seg=(k,opts)=>`<div class="seg" role="group">${opts.map(([v,l])=>`<button data-act="setLook" data-k="${k}" data-v="${v}" class="${L[k]===v?'on':''}">${l}</button>`).join('')}</div>`;
+  let s=`<div class="sec first"><h3>${P.mode==='manga'?'Page layout · reads right to left':'Strip layout · vertical scroll, 800 px wide'}</h3><div class="lay-grid">`;
+  if(P.mode==='manga'){
+    const {w,h,m}=PAGE_M,iw=w-2*m,ih=h-2*m;
+    s+=Object.entries(MANGA).map(([k,v])=>`<button class="lay ${P.layout.manga===k?'on':''}" data-act="setLayout" data-v="${k}">${layThumb(v.r.map(([x,y,rw,rh])=>({x:m+x*iw,y:m+y*ih,w:rw*iw,h:rh*ih})),w,h)}${v.label}</button>`).join('');
+    s+='</div>';
+  }else{
+    s+=Object.entries(MANHWA).map(([k,v])=>{let y=40;const rs=v.sizes.map(z=>{const r={x:0,y,w:800,h:SIZES[z].h};y+=SIZES[z].h+80;return r});return `<button class="lay ${P.layout.manhwa===k?'on':''}" data-act="setLayout" data-v="${k}">${layThumb(rs,800,y)}${v.label} (${v.sizes.length})</button>`}).join('');
+    s+=`</div><div class="row"><button class="btn sm grow" data-act="addPanel">+ Add panel</button><button class="btn sm grow ghost danger" data-act="delPanel" ${P.stripCount<=1?'disabled':''}>Remove panel ${ui.sel+1}</button></div>
+    <label class="f"><span>Gap between panels · ${P.gutter} px</span><input type="range" min="0" max="400" step="10" value="${P.gutter}" data-f="p.gutter" data-t="num" data-r="canvas,gutter"></label>`;
+  }
+  s+=`</div><div class="sec"><h3>Look</h3>
+    <div class="f"><span>Line weight</span>${seg('line',[['thin','Thin'],['medium','Medium'],['bold','Bold']])}</div>
+    <div class="f"><span>Shading</span>${seg('shading',[['light','Light'],['medium','Medium'],['heavy','Heavy']])}</div>
+    <div class="f"><span>Background detail</span>${seg('bg',[['none','None'],['simple','Simple'],['full','Full']])}</div>
+    ${P.mode==='manhwa'?`<div class="f"><span>Project colours</span><div class="swatches">${P.palette.map((c,i)=>`<input type="color" value="${esc(c)}" data-f="p.palette.${i}" data-r="prompt" title="Colour ${i+1}">`).join('')}</div><small>Every panel uses these colours so the strip feels consistent.</small></div>
+      <button class="btn sm" data-act="paletteFromSource" ${P.source.ref?'':'disabled'}>Take colours from the source picture</button>`:''}
+  </div>
+  <div class="sec"><h3>Scene</h3>
+    <label class="f"><span>What happens</span><textarea rows="5" data-f="p.scene.text" data-r="prompt" placeholder="Describe the scene in a few sentences. Add dialogue in quotes if you like.">${esc(P.scene.text)}</textarea>${P.scene.text===EXAMPLE_SCENE?'<small>Example scene. Replace it with yours.</small>':''}</label>
+    <label class="f"><span>Mood</span><input type="text" data-f="p.scene.mood" data-r="prompt" value="${esc(P.scene.mood)}" placeholder="e.g. tense, rainy, hopeful"></label>
+    ${aiBtn('plan',`Plan it for me (${panelCount(P)} panels)`,P.scene.text.trim()?'':'disabled')}
+    <p class="small muted">Gemini splits your scene into panels: shot, pose, action line and dialogue for each. You can change anything afterwards in the panel inspector.</p>
+  </div>`;
+  return s;
+}
+/* step 5 */
+function stepGenerate(){
+  const pn=selPanel(),att=attachments(pn),chars=pn.chars.map(charById).filter(Boolean);
+  const warns=[];
+  if(!P.source.ref)warns.push('No source picture. Gemini will work from your scene text only.');
+  if(!poseById(pn.poseId))warns.push('No pose chosen for this panel. Pick one in the inspector.');
+  chars.forEach(c=>{if(!Object.values(c.refs).some(Boolean))warns.push(`${c.name} has no reference pictures. Add them in step 3 so they look the same in every panel.`)});
+  if(P.source.realPerson&&!P.source.permission)warns.push('The source photo shows a real person. Confirm you have permission in step 1.');
+  const cu=cur(pn),room=4-pn.variations.length,n=Math.min(room,+SET.variations||2),g=ui.gen;
+  return `<div class="sec first"><h3>Panel ${ui.sel+1} · ${esc(SHOTS[pn.shot])}</h3>
+    ${warns.map(w=>`<p class="note warn small">${esc(w)}</p>`).join('')}
+    ${g&&g.panel===pn.id?`<div class="stack"><p class="small">Drawing version ${g.done+1} of ${g.total}… This takes 10 to 40 seconds each.</p><div class="progress"><i style="width:${Math.round(g.done/g.total*100)}%"></i></div><button class="btn" data-act="stopGen">Stop</button></div>`
+      :room>0?aiBtn('genPanel',`Draw ${n} version${n>1?'s':''} with Gemini`,g?'disabled':''):'<p class="note small">This panel has 4 versions. Remove one to draw more.</p>'}
+    <p class="small muted">Gemini gets the prompt below plus ${att.length} reference picture${att.length===1?'':'s'}. Change how many versions it draws in Settings.</p>
+  </div>
+  <div class="sec"><h3>Versions (${pn.variations.length} of 4)</h3>
+    <div class="vars">${pn.variations.map((v,i)=>`<div class="var ${pn.chosen===i?'on':''}"><img src="${esc(urlOf(v))}" alt="Version ${i+1}"><div class="row"><button class="btn sm ${pn.chosen===i?'gold':''}" data-act="pickVar" data-v="${i}">${pn.chosen===i?'Chosen':'Use this'}</button><button class="btn sm ghost danger" data-act="delVar" data-v="${i}" title="Remove this version">×</button></div></div>`).join('')||'<p class="small muted">No versions yet.</p>'}</div>
+    ${cu&&chars.length?`<div class="stack"><p class="small muted">Happy with this panel? Make it a seed panel. It's sent with every later panel of that character to keep them consistent.</p><div class="row">${chars.map(c=>`<button class="btn sm" data-act="setSeed" data-id="${c.id}">${c.seed===cu?'✓ ':''}Seed for ${esc(c.name)}</button>`).join('')}</div></div>`:''}
+  </div>
+  <div class="sec"><h3>Sent to Gemini</h3><div class="attach">${att.map(a=>`<div class="att"><span class="t">${a.ref?`<img src="${esc(urlOf(a.ref))}" alt="">`:a.joints?`<canvas width="38" height="57" data-skel="${esc(pn.poseId)}"></canvas>`:''}</span><span>${esc(a.label)}</span></div>`).join('')||'<p class="small muted">No reference pictures.</p>'}</div>
+    <div class="row"><h3 class="grow">Prompt</h3><button class="btn sm" data-act="copyPrompt">Copy</button></div>
+    <div class="prompt" id="promptOut">${esc(buildPrompt(pn))}</div>
+    <details class="more"><summary>Use Gemini yourself instead</summary><div class="stack">
+      <p class="small muted">Save the reference pack, attach its files in Gemini or AI Studio, paste the prompt, then drop the results here.</p>
+      <button class="btn" data-act="refPack">Save reference pack (.zip)</button>
+      ${room>0?dropZone('upVar','Drop pictures from Gemini','Up to 4 versions. You can also paste one with Ctrl+V.',true):''}
+    </div></details>
+  </div>`;
+}
+/* step 6 */
+function stepRefine(){
+  const pn=selPanel(),cu=cur(pn),g=ui.gen;
+  if(!cu)return `<div class="sec first"><p class="note">Panel ${ui.sel+1} has no picture yet. Draw one in step 5 first.</p><button class="btn" data-act="goStep" data-v="5">Go to Generate</button></div>`;
+  return `<div class="sec first"><div class="img-box"><img src="${esc(urlOf(cu))}" alt="Current panel"></div>
+    <div class="row"><button class="btn sm grow" data-act="undo" ${pn.h<=0?'disabled':''}>↶ Undo</button><button class="btn sm grow" data-act="redo" ${pn.h>=pn.history.length-1?'disabled':''}>Redo ↷</button></div>
+    <div class="hist" aria-label="Version history">${pn.history.map((v,i)=>`<button class="${i===pn.h?'on':''}" data-act="jumpHist" data-v="${i}" title="${esc(v.note||'Version '+(i+1))}"><img src="${esc(urlOf(v.ref))}" alt=""><span>${i+1}</span></button>`).join('')}</div>
+    ${pn.history[pn.h]&&pn.history[pn.h].note?`<p class="small muted">This version: ${esc(pn.history[pn.h].note)}</p>`:''}</div>
+  <div class="sec"><h3>Ask for a change</h3>
+    <label class="f"><span>What should change?</span><textarea id="editIn" rows="3" placeholder="e.g. make her look angrier, remove the car, darker sky"></textarea></label>
+    <div class="chips">${['Make the expression angrier','Darker, stormier sky','Add rain','More speed lines','Remove background clutter'].map(t=>`<button class="chip" data-act="quickEdit" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+    ${g&&g.panel===pn.id?`<div class="stack"><p class="small">Gemini is editing the panel… This takes 10 to 40 seconds.</p><div class="progress"><i style="width:50%"></i></div><button class="btn" data-act="stopGen">Stop</button></div>`:aiBtn('applyEdit','Apply change',g?'disabled':'')}
+    <p class="small muted">The characters, pose, camera and style stay the same. Only what you describe changes. Undo takes you back.</p>
+    <details class="more"><summary>Add an edited version made elsewhere</summary>${dropZone('upEdit','Drop the edited picture','It becomes a new version.')}</details>
+  </div>`;
+}
+/* step 7 */
+function stepLetter(){
+  const pn=selPanel(),order=readingOrder(pn);
+  return `<div class="sec first"><h3>Add to panel ${ui.sel+1}</h3>
+    <div class="grid2">${Object.entries(BTYPES).map(([k,v])=>`<button class="btn" data-act="addBub" data-v="${k}" title="${esc(v.tip)}">+ ${v.label}</button>`).join('')}</div>
+    <p class="small muted">Drag a bubble to move it. Drag the gold dot to point the tail, and the gold square to resize. Edit the words in the inspector on the right.</p>
+    ${P.mode==='manga'?'<p class="note small"><b>Manga reads right to left.</b> Put the first line of dialogue at the top right. The numbers show the reading order.</p>':'<p class="note small"><b>Webtoon reads top to bottom.</b> Keep bubbles near the top of each panel.</p>'}
+  </div>
+  <div class="sec"><h3>Reading order</h3><div class="bub-list">${order.map((b,i)=>`<button class="bub-item ${ui.bub===b.id?'on':''}" data-act="selBub" data-id="${b.id}"><span class="o">${i+1}</span><span class="tx">${esc(b.text)}</span><span class="tag">${BTYPES[b.type].label}</span></button>`).join('')||'<p class="small muted">No lettering in this panel yet.</p>'}</div></div>`;
+}
+/* step 8 */
+function stepExport(){
+  const pn=selPanel(),has=!!cur(pn);
+  return `<div class="sec first"><h3>Panel ${ui.sel+1}</h3><div class="grid2">
+    <button class="btn" data-act="exPanel" data-v="lettered" title="The panel picture with your bubbles on top">With lettering</button>
+    <button class="btn" data-act="exPanel" data-v="clean" ${has?'':'disabled'} title="Just the art, no bubbles">Art only</button></div></div>
+  <div class="sec"><h3>${P.mode==='manga'?'Full page':'Webtoon strip'}</h3>
+    ${P.mode==='manga'?`<button class="btn" data-act="exPage">Page with lettering (PNG)</button>`:`<button class="btn" data-act="exPage">Full strip (PNG)</button><button class="btn" data-act="exSlices" title="800 × 1280 pieces, the size webtoon sites accept">Strip in upload-size pieces (.zip)</button>`}</div>
+  <div class="sec"><h3>Everything</h3>
+    <button class="btn big gold" data-act="exAll">Download everything (.zip)</button>
+    <p class="small muted">Every panel with and without lettering, the ${P.mode==='manga'?'page':'strip and its pieces'}, all prompts, Veo prompts and the project file.</p>
+    <p class="note small"><b>Google Drive:</b> put the zip in a Drive folder named <b>PanelForge/${esc(P.name)}</b>. This page can't write to Drive directly yet.</p></div>
+  <div class="sec"><h3>Project file</h3>
+    <div class="row"><button class="btn grow" data-act="exJson">Save project file (.json)</button><label class="btn grow"><input type="file" class="sr" accept=".json,application/json" data-act="imJson">Open project file</label></div>
+    <p class="small muted">The project file holds everything, including pictures, so you can move it to another device or keep a backup.</p></div>`;
+}
+/* step 9 */
+function stepAnimate(){
+  const vis=P.panels.slice(0,panelCount(P));
+  return `<div class="sec first">${aiBtn('veoAll','Write Veo prompts for all panels')}
+    <p class="small muted">Each prompt covers the camera move, subject motion, mood, length and an audio cue. The layer plan says what goes on the foreground, character and background layers for a 2.5D parallax shot.</p>
+    ${ui.busy.veo?'<p class="note gold small">Gemini is writing the prompts. This takes up to a minute.</p>':''}</div>
+  <div class="sec stack">${vis.map((pn,i)=>{const v=pn.veo||{};return `<div class="veo"><div class="row"><b class="grow">Panel ${i+1} · ${esc(SHOTS[pn.shot])}</b>${v.prompt?`<button class="btn sm gold" data-act="copyVeo" data-v="${i}">Copy</button>`:''}</div>
+      <label class="f"><span>Veo prompt</span><textarea rows="5" data-f="veo:${pn.id}.prompt" placeholder="Not written yet">${esc(v.prompt||'')}</textarea></label>
+      <div class="grid2"><label class="f"><span>Foreground</span><textarea rows="2" data-f="veo:${pn.id}.fg">${esc(v.fg||'')}</textarea></label><label class="f"><span>Character</span><textarea rows="2" data-f="veo:${pn.id}.ch">${esc(v.ch||'')}</textarea></label></div>
+      <label class="f"><span>Background</span><textarea rows="2" data-f="veo:${pn.id}.bg">${esc(v.bg||'')}</textarea></label></div>`}).join('')}
+    <button class="btn" data-act="exVeo">Save all as text file (.txt)</button></div>`;
+}
+
+/* centre canvas */
+function pageSVG(){
+  const {w,h}=pageSize(P),rects=layoutRects(P),rtl=P.mode==='manga';
+  let s=`<svg id="pageSvg" viewBox="0 0 ${w} ${h}" role="img" aria-label="${rtl?'Manga page':'Webtoon strip'} with ${rects.length} panels"><defs><pattern id="hatch" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="16" height="16" fill="#efece6"/><rect width="6" height="16" fill="#e4e0d8"/></pattern>`;
+  rects.forEach((r,i)=>s+=`<clipPath id="cp${i}"><rect x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}"/></clipPath>`);
+  s+=`</defs><rect width="${w}" height="${h}" fill="#fff"/>`;
+  rects.forEach((r,i)=>{
+    const pn=P.panels[i],u=urlOf(cur(pn)),cx=r.x+r.w/2,cy=r.y+r.h/2;
+    s+=`<g data-panel="${i}" class="pnl"><title>Panel ${i+1}: ${esc(SHOTS[pn.shot])}. Click to select.</title>`;
+    if(u)s+=`<image href="${esc(u)}" x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#cp${i})"/>`;
+    else{
+      const fs=Math.min(26,r.w/14);
+      s+=`<rect x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" fill="url(#hatch)"/>
+      <text x="${f1(cx)}" y="${f1(cy-fs*1.2)}" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-weight="700" font-size="${f1(Math.min(84,r.w/5))}" fill="#c9c3b8">${i+1}</text>
+      <text x="${f1(cx)}" y="${f1(cy+fs*1.4)}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="${f1(fs*.8)}" fill="#8e887e" letter-spacing="2">${esc(SHOTS[pn.shot].toUpperCase())}</text>
+      ${pn.line?`<text x="${f1(cx)}" y="${f1(cy+fs*2.8)}" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="${f1(fs*.85)}" fill="#9d978d">${esc(trunc(pn.line,Math.floor(r.w/(fs*.5))))}</text>`:''}`;
+    }
+    if(rtl)s+=`<rect x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" fill="none" stroke="#111" stroke-width="5"/>`;
+    s+='</g>';
+  });
+  s+=`<g id="bubLayer">${bubblesSVG()}</g>`;
+  const sr=rects[ui.sel];
+  if(sr)s+=`<rect id="selRect" x="${f1(sr.x-5)}" y="${f1(sr.y-5)}" width="${f1(sr.w+10)}" height="${f1(sr.h+10)}" fill="none" stroke="#d8a540" stroke-width="7" pointer-events="none"/>`;
+  rects.forEach((r,i)=>{const x=rtl?r.x+r.w-26:r.x+26;s+=`<g pointer-events="none"><circle cx="${f1(x)}" cy="${f1(r.y+26)}" r="17" fill="${i===ui.sel?'#d8a540':'#1b1a1f'}"/><text x="${f1(x)}" y="${f1(r.y+27)}" text-anchor="middle" dominant-baseline="central" font-family="IBM Plex Mono, monospace" font-weight="500" font-size="17" fill="${i===ui.sel?'#1c1405':'#fff'}">${i+1}</text></g>`});
+  return s+'</svg>';
+}
+function bubblesSVG(){
+  const rects=layoutRects(P);let s='';
+  rects.forEach((r,i)=>{const pn=P.panels[i];
+    pn.bubbles.forEach(b=>{s+=bubbleSVG(bubGeom(b,r),ui.bub===b.id,`${i}:${b.id}`)});
+    if(P.step===7&&pn.bubbles.length>1)readingOrder(pn).forEach((b,k)=>{const g=bubGeom(b,r);s+=`<g pointer-events="none"><circle cx="${f1(g.cx-g.w/2)}" cy="${f1(g.cy-g.h/2)}" r="14" fill="#d8a540"/><text x="${f1(g.cx-g.w/2)}" y="${f1(g.cy-g.h/2+1)}" text-anchor="middle" dominant-baseline="central" font-family="IBM Plex Mono, monospace" font-size="15" fill="#1c1405">${k+1}</text></g>`});
+  });
+  return s;
+}
+function renderCenter(){
+  const rtl=P.mode==='manga',n=panelCount(P);
+  $('#center').innerHTML=`<div class="canvas-head"><span><b>${rtl?'Manga page':'Webtoon strip'}</b> · ${n} panel${n>1?'s':''} · ${rtl?'reads right to left ←':'scrolls top to bottom ↓'}</span><span>Click a panel to select it</span></div>
+  <div class="page" style="max-width:${rtl?640:460}px">${pageSVG()}</div>`;
+}
+function renderBubbles(){const l=$('#bubLayer');if(l)l.innerHTML=bubblesSVG()}
+
+/* right inspector */
+function renderRight(){
+  const pn=selPanel(),n=panelCount(P),i=ui.sel,r=layoutRects(P)[i],cu=cur(pn),b=selBubble();
+  const castChars=LIB.chars.filter(c=>P.cast.includes(c.id)||pn.chars.includes(c.id));
+  const opt=(o,v)=>Object.entries(o).map(([k,l])=>`<option value="${k}" ${v===k?'selected':''}>${esc(typeof l==='string'?l:l.label)}</option>`).join('');
+  let s=`<div class="insp-head"><button class="btn icon" data-act="prevPanel" ${i<=0?'disabled':''} title="Previous panel" aria-label="Previous panel">‹</button><div><div class="eyebrow">Panel inspector</div><h2>Panel ${i+1} <span class="muted" style="font-size:15px">of ${n}</span></h2></div><button class="btn icon" data-act="nextPanel" ${i>=n-1?'disabled':''} title="Next panel" aria-label="Next panel">›</button></div>`;
+  if(b){
+    const F=Object.entries(FONTS).map(([k,v])=>`<option value="${k}" ${b.font===k?'selected':''}>${esc(v.label)}</option>`).join('');
+    s+=`<div class="sec"><div class="row"><h3 class="grow">Selected ${BTYPES[b.type].label.toLowerCase()}</h3><button class="btn sm ghost" data-act="deselBub">Done</button></div>
+      <label class="f"><span>Words</span><textarea id="bubText" rows="3" data-f="bb.text" data-r="bubbles">${esc(b.text)}</textarea></label>
+      <label class="f"><span>Font</span><select data-f="bb.font" data-r="bubbles">${F}</select></label>
+      <label class="f"><span>Size · <span id="bubSize">${b.size}</span></span><input type="range" min="12" max="${b.type==='sfx'?180:60}" value="${b.size}" data-f="bb.size" data-t="num" data-r="bubbles,bubsize"></label>
+      <div class="row"><label class="check"><input type="checkbox" data-f="bb.caps" data-r="bubbles" ${b.caps?'checked':''}><span>ALL CAPS</span></label>
+      ${b.type==='sfx'?`<input type="color" value="${esc(b.color)}" data-f="bb.color" data-r="bubbles" title="Letter colour">`:''}
+      ${['speech','shout','thought'].includes(b.type)?`<label class="check"><input type="checkbox" data-f="bb.tail" data-r="bubbles" ${b.tail!==false?'checked':''}><span>Tail</span></label>`:''}</div>
+      <button class="btn sm ghost danger" data-act="delBub">Delete</button></div>`;
+  }
+  s+=`<div class="sec ${b?'':'first'}"><div class="thumb" style="--ar:${f1(r.w)}/${f1(r.h)}">${cu?`<img src="${esc(urlOf(cu))}" alt="Panel ${i+1}">`:'No picture yet'}</div>
+    <label class="f"><span>What happens</span><textarea rows="3" data-f="pn.line" data-r="prompt,canvas" placeholder="e.g. ROVEN turns around, surprised">${esc(pn.line)}</textarea></label>
+    <label class="f"><span>Camera shot</span><select data-f="pn.shot" data-r="prompt,canvas">${opt(SHOTS,pn.shot)}</select></label>
+    <label class="f"><span>Pose</span><select data-f="pn.poseId" data-r="prompt,left5">${P.poses.filter(p=>!p.pending).map(p=>`<option value="${p.id}" ${pn.poseId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}<option value="" ${pn.poseId?'':'selected'}>No pose</option></select></label>
+    <div class="f"><span>Characters</span><div class="chips">${castChars.map(c=>`<button class="chip ${pn.chars.includes(c.id)?'on':''}" data-act="togglePanelChar" data-id="${c.id}" aria-pressed="${pn.chars.includes(c.id)}"><span class="dot" style="background:${esc(c.accent)}"></span>${esc(c.name)}</button>`).join('')||'<span class="small muted">Add characters in step 3.</span>'}</div></div>
+    <label class="check"><input type="checkbox" data-f="pn.outfitOverride" data-r="prompt,right" ${pn.outfitOverride?'checked':''}><span>Outfit override <span class="small muted">(allow a different outfit in this panel only)</span></span></label>
+    ${pn.outfitOverride?`<label class="f"><span>New outfit</span><input type="text" data-f="pn.outfitNote" data-r="prompt" value="${esc(pn.outfitNote)}" placeholder="e.g. rain coat over the usual clothes"></label>`:''}
+    <label class="f"><span>Mood</span><input type="text" data-f="pn.mood" data-r="prompt" value="${esc(pn.mood)}" placeholder="${esc(P.scene.mood||'Uses the scene mood')}"></label>
+    <label class="f"><span>Space for lettering</span><select data-f="pn.space" data-r="prompt">${opt(SPACES,pn.space)}</select></label>
+    ${P.mode==='manhwa'?`<label class="f"><span>Panel shape</span><select data-f="pn.size" data-r="canvas,prompt">${opt(SIZES,pn.size)}</select></label>`:''}
+    <p class="small muted">Shape: ${ratioLabel(r)} · ${pn.variations.length} version${pn.variations.length===1?'':'s'} · ${pn.bubbles.length} lettering item${pn.bubbles.length===1?'':'s'}</p>
+  </div>`;
+  $('#right').innerHTML=s;
+}
+
+/* ---------- field binding ---------- */
+function resolvePath(path){
+  const parts=path.split('.'),head=parts.shift();let obj,lib=false;
+  if(head==='p')obj=P;else if(head==='pn')obj=selPanel();else if(head==='bb')obj=selBubble();
+  else if(head.startsWith('ch:')){obj=charById(head.slice(3));lib=true}
+  else if(head.startsWith('pose:'))obj=poseById(head.slice(5));
+  else if(head.startsWith('veo:')){const pn=P.panels.find(x=>x.id===head.slice(4));if(pn)obj=pn.veo||(pn.veo={})}
+  for(let i=0;i<parts.length-1;i++)obj=obj&&obj[parts[i]];
+  return[obj,parts[parts.length-1],lib];
+}
+function onField(el){
+  const [obj,key,lib]=resolvePath(el.dataset.f);if(!obj)return;
+  let v=el.type==='checkbox'?el.checked:el.value;if(el.dataset.t==='num')v=+v;
+  obj[key]=v;markDirty(lib);
+  const r=(el.dataset.r||'').split(',');
+  if(r.includes('canvas'))renderCenter();else if(r.includes('bubbles'))renderBubbles();
+  if(r.includes('right'))renderRight();
+  if(r.includes('bubsize')){const s=$('#bubSize');if(s)s.textContent=v}
+  if(r.includes('gutter')){const s=el.closest('.f');if(s)s.querySelector('span').textContent=`Gap between panels · ${v} px`}
+  if(r.includes('projname')){const o=$(`#projPick option[value="${CSS.escape(P.id)}"]`);if(o)o.textContent=trunc(v,28)}
+  if(r.includes('left5')&&P.step===5)renderLeft();
+  const po=$('#promptOut');if(po)po.textContent=buildPrompt(selPanel());
+  if(el.dataset.f.startsWith('bb.')&&P.step===7){const it=$(`.bub-item.on .tx`);if(it&&key==='text')it.textContent=v}
+}
+document.addEventListener('input',e=>{const el=e.target.closest('[data-f]');if(el&&el.type!=='checkbox'&&el.type!=='file')onField(el)});
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.matches('[data-f]')&&el.type==='checkbox'){onField(el);return}
+  if(el.matches('select[data-act],input[type=file][data-act],input[type=checkbox][data-act]'))runAct(el.dataset.act,el,el.files);
+});
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]');if(!el)return;
+  if(el.matches('select,input'))return;
+  if(el.tagName==='LABEL')return;
+  e.preventDefault();runAct(el.dataset.act,el);
+});
+async function runAct(name,el,files){
+  const fn=A[name];if(!fn)return;
+  try{await fn(el,files)}catch(e){console.error(e);toast(e&&e.message==='unreadable'?"That file isn't a picture this page can read. Try a PNG or JPG.":'Something went wrong. Try again.')}
+  finally{if(el&&el.type==='file')el.value=''}
+}
+function confirmClick(el,msg='Click again to confirm'){
+  if(el.dataset.armed){return true}
+  el.dataset.armed='1';const old=el.textContent;el.textContent=msg;setTimeout(()=>{if(el.isConnected){delete el.dataset.armed;el.textContent=old}},3500);return false;
+}
+async function busy(el,fn){if(el){el.disabled=true;el.classList.add('wait')}try{return await fn()}finally{if(el&&el.isConnected){el.disabled=false;el.classList.remove('wait')}}}
+async function copyText(t){try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){toast('Copy did not work here. Select the text and copy it yourself.')}}
+
+/* drag & drop + paste */
+document.addEventListener('dragover',e=>{const z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over')}});
+document.addEventListener('dragleave',e=>{const z=e.target.closest('[data-drop]');if(z)z.classList.remove('over')});
+document.addEventListener('drop',e=>{const z=e.target.closest('[data-drop]');if(!z)return;e.preventDefault();z.classList.remove('over');runAct(z.dataset.drop,z,e.dataTransfer.files)});
+document.addEventListener('paste',e=>{
+  const files=imgFiles([...(e.clipboardData&&e.clipboardData.files||[])]);if(!files.length)return;
+  e.preventDefault();
+  const target={1:'upSource',2:'upPose',6:'upEdit'}[P.step]||'upVar';
+  runAct(target,null,files);
+});
+document.addEventListener('keydown',e=>{
+  if((e.key==='Delete'||e.key==='Backspace')&&ui.bub&&!e.target.closest('input,textarea,select')){e.preventDefault();A.delBub()}
+});
+
+/* ---------- canvas pointer ---------- */
+let drag=null;
+function svgPt(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse())}
+document.addEventListener('pointerdown',e=>{
+  const svg=e.target.closest('#pageSvg');if(!svg)return;
+  const bg=e.target.closest('[data-bub]'),h=e.target.closest('[data-h]'),pg=e.target.closest('[data-panel]');
+  if(bg){
+    const [pi,id]=bg.dataset.bub.split(':'),pn=P.panels[+pi],b=pn&&pn.bubbles.find(x=>x.id===id);if(!b)return;
+    const changedPanel=ui.sel!==+pi,changedBub=ui.bub!==id;
+    ui.sel=+pi;ui.bub=id;
+    drag={svg,b,r:layoutRects(P)[+pi],kind:h?h.dataset.h:'move',start:svgPt(svg,e),o:{...b},moved:false};
+    e.preventDefault();
+    renderBubbles();moveSel();
+    if(changedPanel||changedBub){renderRight();if(P.step===7||changedPanel&&[5,6,8].includes(P.step))renderLeft()}
+    return;
+  }
+  if(pg){const i=+pg.dataset.panel;const was=ui.sel;ui.sel=i;ui.bub=null;renderCenter();renderRight();if(was!==i&&[2,4,5,6,7,8].includes(P.step))renderLeft()}
+});
+function moveSel(){const s=$('#selRect'),r=layoutRects(P)[ui.sel];if(s&&r){s.setAttribute('x',r.x-5);s.setAttribute('y',r.y-5);s.setAttribute('width',r.w+10);s.setAttribute('height',r.h+10)}}
+window.addEventListener('pointermove',e=>{
+  if(!drag)return;const p=svgPt(drag.svg,e),{b,r,o}=drag,dx=p.x-drag.start.x,dy=p.y-drag.start.y;
+  if(Math.abs(dx)+Math.abs(dy)>2)drag.moved=true;
+  if(drag.kind==='move'){b.bx=o.bx+dx/r.w;b.by=o.by+dy/r.h;b.tx=o.tx+dx/r.w;b.ty=o.ty+dy/r.h}
+  else if(drag.kind==='tail'){b.tx=(p.x-r.x)/r.w;b.ty=(p.y-r.y)/r.h}
+  else if(drag.kind==='size'){
+    if(b.type==='sfx'){const cx=r.x+o.bx*r.w,d0=Math.max(10,Math.abs(drag.start.x-cx));b.size=Math.round(clamp(o.size*Math.abs(p.x-cx)/d0,16,220))}
+    else{const cx=r.x+b.bx*r.w;b.bw=clamp(2*Math.abs(p.x-cx)/r.w,.12,1.3)}
+  }
+  renderBubbles();
+});
+window.addEventListener('pointerup',()=>{if(!drag)return;const m=drag.moved;drag=null;if(m){markDirty();if(P.step===7)renderLeft();renderRight()}});
+
+/* pose editor pointer */
+document.addEventListener('pointerdown',e=>{
+  const c=e.target.closest('#poseEd');if(!c)return;const p=poseById(P.poseSel);if(!p||!p.joints)return;
+  const rc=c.getBoundingClientRect(),x=(e.clientX-rc.left)/rc.width,y=(e.clientY-rc.top)/rc.height;
+  let best=-1,bd=1e9;p.joints.forEach((j,i)=>{if(!j)return;const d=((j[0]-x)*rc.width)**2+((j[1]-y)*rc.height)**2;if(d<bd){bd=d;best=i}});
+  if(best<0||bd>28*28)return;edDrag=best;c.setPointerCapture(e.pointerId);e.preventDefault();drawEditor();
+});
+document.addEventListener('pointermove',e=>{
+  if(edDrag<0)return;const c=$('#poseEd'),p=poseById(P.poseSel);if(!c||!p)return;
+  const rc=c.getBoundingClientRect();p.joints[edDrag]=[clamp((e.clientX-rc.left)/rc.width,0,1),clamp((e.clientY-rc.top)/rc.height,0,1)];drawEditor();
+});
+document.addEventListener('pointerup',()=>{if(edDrag<0)return;edDrag=-1;const p=poseById(P.poseSel);if(p&&p.preset&&!p.name.endsWith('(edited)')&&p.name===p.preset){p.name+=' (edited)'}markDirty();renderLeft()});
+
+/* ---------- actions ---------- */
+const A={
+  goStep(el){const v=+el.dataset.v;if(v<1||v>9)return;P.step=v;markDirty();renderSteps();renderLeft();renderBubbles();$('#left').scrollTop=0},
+  setMode(el){P.mode=el.dataset.v;ensurePanels(P);ui.sel=Math.min(ui.sel,panelCount(P)-1);ui.bub=null;markDirty();renderAll()},
+  async saveNow(el){clearTimeout(saveT);await busy(el,saveNow);toast('Project saved on this computer')},
+  async delProject(el){if(!confirmClick(el,'Click again to delete'))return;const id=P.id;clearTimeout(saveT);dirty=false;await idb.del('projects',id);await refreshProjects();
+    if(PROJECTS.length)await loadProject(PROJECTS[0].id);else{P=newProject(false);ui.sel=0;ui.bub=null;renderAll();await saveNow()}toast('Project deleted')},
+  openSettings(){const d=$('#settings');$('#setKey').value=SET.key;$('#setText').value=SET.textModel;$('#setImage').value=SET.imageModel;$('#setVars').value=String(SET.variations);$('#setMsg').textContent='';d.showModal()},
+  closeSettings(){$('#settings').close()},
+  saveSettings(){readSettingsForm();storeSettings();$('#settings').close();renderAll();toast(hasAI()?'Settings saved.':'Settings saved. Add a key to use Gemini.')},
+  async testKey(el){readSettingsForm();const m=$('#setMsg');if(!SET.key){m.textContent='Paste a key first.';return}m.textContent='Testing…';
+    await busy(el,async()=>{try{await aiText('Reply with the single word OK.');storeSettings();m.textContent='It works. Your key is saved.';m.style.color='var(--ok)';renderAll()}catch(e){m.textContent=aiErr(e);m.style.color='var(--warn)'}})},
+  async install(){if(!installEvt){toast('Use your browser menu: Install Panel Forge.');return}installEvt.prompt();try{const r=await installEvt.userChoice;if(r.outcome==='accepted')toast('Installed. Open Panel Forge from your Start menu or app list.')}catch(e){}installEvt=null;renderTop()},
+  async newProject(el){if(dirty&&DB)await saveNow();P=newProject(false);ensurePanels(P);ui.sel=0;ui.bub=null;markDirty();renderAll();toast('New project started');$('#projName').focus();$('#projName').select()},
+  async pickProject(el){if(el.value===P.id)return;if(dirty)await saveNow();await loadProject(el.value)},
+  /* upload */
+  async upSource(el,files){const f=imgFiles(files)[0];if(!f){toast('Choose a picture file (PNG, JPG or WebP).');return}
+    toast('Adding picture…');P.source.ref=await putImage(f);P.source.realPerson=false;P.source.permission=false;markDirty();renderAll();toast('Picture added. Press "Read this picture" next.')},
+  clearSource(el){if(!confirmClick(el,'Click again to remove'))return;P.source.ref=null;markDirty();renderAll()},
+  async analyze(el){
+    if(!hasAI()){A.openSettings();return}if(!P.source.ref)return;
+    await busy(el,async()=>{
+      try{
+        const blob=await blobOf(P.source.ref);
+        const r=await aiText(`You are helping a comic artist turn this picture into a ${P.mode} panel. Describe what is in the picture so it can be redrawn.
+Reply with only a JSON object: {"subject": string, "outfit": string, "setting": string, "lighting": string, "mood": string, "realPerson": boolean}
+- subject: who or what is shown (age range, build, hair, expression). One sentence.
+- outfit: clothing, colours and accessories. One sentence. Empty string if none.
+- setting: place, time of day, weather. One sentence.
+- lighting: light direction, quality and colour. Short phrase.
+- mood: 2 to 4 words.
+- realPerson: true if this looks like a real photograph of a real person, false for drawings, renders or no people.`,{images:[blob],json:true});
+        const a=P.source.analysis;['subject','outfit','setting','lighting','mood'].forEach(k=>{if(typeof r[k]==='string')a[k]=r[k]});
+        P.source.realPerson=!!r.realPerson;if(!P.scene.mood&&a.mood)P.scene.mood=a.mood;markDirty();renderLeft();toast('Done. Edit anything that is wrong.');
+      }catch(e){toast(aiErr(e))}
+    });
+  },
+  /* poses */
+  async upPose(el,files){const fs=imgFiles(files).slice(0,8);if(!fs.length){toast('Choose one or more picture files.');return}
+    const found=[];for(const f of fs){const kind=await detectPoseKind(f);const ref=await putImage(f);const p={id:uid(),name:f.name.replace(/\.[^.]+$/,'').slice(0,40)||'Pose',kind,ref};P.poses.push(p);P.poseSel=p.id;found.push(POSE_KINDS[kind])}
+    markDirty();renderLeft();renderRight();toast(fs.length===1?`Added. Detected: ${found[0]}.`:`Added ${fs.length} poses.`)},
+  selPose(el){P.poseSel=el.dataset.id;renderLeft()},
+  newStick(){const n=P.poses.filter(p=>p.joints).length+1;const p={id:uid(),name:'Stick figure '+n,kind:'openpose',joints:clone(POSE_PRESETS.Standing)};P.poses.push(p);P.poseSel=p.id;markDirty();renderLeft();renderRight()},
+  preset(el){const k=el.dataset.v;let p=poseById(P.poseSel);
+    if(!p||!p.joints||p.pending){p={id:uid(),name:k,kind:'openpose',joints:null,preset:k};P.poses.push(p);P.poseSel=p.id}
+    p.joints=clone(POSE_PRESETS[k]);if(!p.name||p.preset&&(p.name===p.preset||p.name===p.preset+' (edited)')||/^Stick figure/.test(p.name))p.name=k;p.preset=k;
+    markDirty();renderLeft();renderRight();renderCenter()},
+  mirror(){const p=poseById(P.poseSel);if(!p||!p.joints)return;const J=p.joints.map(j=>j?[1-j[0],j[1]]:null);[[2,5],[3,6],[4,7],[8,11],[9,12],[10,13],[14,15],[16,17]].forEach(([a,b])=>{const t=J[a];J[a]=J[b];J[b]=t});p.joints=J;markDirty();renderLeft()},
+  dupPose(){const p=poseById(P.poseSel);if(!p)return;const c={...clone(p),id:uid(),name:p.name+' copy',pending:false};P.poses.push(c);P.poseSel=c.id;markDirty();renderLeft();renderRight()},
+  delPose(el){if(!confirmClick(el,'Click again to delete'))return;const id=P.poseSel;P.poses=P.poses.filter(p=>p.id!==id);P.panels.forEach(pn=>{if(pn.poseId===id)pn.poseId=P.poses[0]?P.poses[0].id:null});P.poseSel=P.poses[0]?P.poses[0].id:null;markDirty();renderLeft();renderRight()},
+  usePose(){selPanel().poseId=P.poseSel;markDirty();renderRight();toast(`Panel ${ui.sel+1} now uses this pose.`)},
+  async savePosePng(){const p=poseById(P.poseSel);if(!p||!p.joints)return;await offer(`pose-${slug(p.name)}.png`,await skelBlob(p.joints))},
+  async posePhoto(el,files){
+    const f=imgFiles(files)[0];if(!f)return;if(!hasAI()){A.openSettings();return}
+    const zone=el&&el.closest?el.closest('.drop'):null;if(zone)zone.classList.add('over');toast('Gemini is reading your pose. This can take up to a minute.');
+    try{
+      const r=await aiText(`This photo shows a person posing. Find their body keypoints for an OpenPose skeleton.
+Reply with only a JSON object: {"joints": [[x, y] or null, ...]} with exactly 18 entries in this order: ${JOINT_NAMES.join(', ')}.
+x and y are fractions from 0 to 1 of the image width and height, measured from the top-left corner. "Right" means the person's own right side. Use null for any keypoint you cannot see.`,{images:[f],json:true});
+      const bmp=await createImageBitmap(f),W=512,H=768,s=Math.min(W/bmp.width,H/bmp.height)*.92,ox=(W-bmp.width*s)/2,oy=(H-bmp.height*s)/2;
+      const src=Array.isArray(r.joints)?r.joints:[];
+      const J=POSE_PRESETS.Standing.map((d,i)=>{const j=src[i];if(Array.isArray(j)&&isFinite(j[0])&&isFinite(j[1]))return[clamp((ox+j[0]*bmp.width*s)/W,0,1),clamp((oy+j[1]*bmp.height*s)/H,0,1)];return i>=14?null:d?[...d]:null});
+      const p={id:uid(),name:'From my photo',kind:'openpose',joints:J,pending:true};P.poses.push(p);P.poseSel=p.id;markDirty();renderLeft();toast('Check the stick figure, then press "Keep this pose".');
+    }catch(e){toast(e&&e.code&&e.code!=='invalid_json'?aiErr(e):'Pose unclear. Try a full-body photo with a plain background, or use the skeleton PNG instead.')}
+    finally{if(zone)zone.classList.remove('over')}
+  },
+  keepPose(){const p=poseById(P.poseSel);if(p)p.pending=false;markDirty();renderLeft();renderRight();toast('Pose kept.')},
+  discardPose(){P.poses=P.poses.filter(p=>p.id!==P.poseSel);P.poseSel=P.poses[0]?P.poses[0].id:null;markDirty();renderLeft()},
+  /* characters */
+  addChar(){const c={id:uid(),name:'NEW CHARACTER',accent:'#7aa2d8',desc:'',refs:{front:null,side:null,back:null,face:null},seed:null};LIB.chars.push(c);P.cast.push(c.id);markDirty(true);renderLeft();renderRight()},
+  delChar(el){if(!confirmClick(el,'Click again: removes from all projects'))return;const id=el.dataset.id;LIB.chars=LIB.chars.filter(c=>c.id!==id);P.cast=P.cast.filter(x=>x!==id);P.panels.forEach(pn=>pn.chars=pn.chars.filter(x=>x!==id));markDirty(true);renderLeft();renderRight()},
+  toggleCast(el){const id=el.dataset.id;if(el.checked){if(!P.cast.includes(id))P.cast.push(id)}else P.cast=P.cast.filter(x=>x!==id);markDirty();renderRight();renderSteps()},
+  async upRef(el,files){const f=imgFiles(files)[0];if(!f)return;const c=charById(el.dataset.id);c.refs[el.dataset.v]=await putImage(f);markDirty(true);renderLeft();renderSteps()},
+  clrRef(el){const c=charById(el.dataset.id);c.refs[el.dataset.v]=null;markDirty(true);renderLeft()},
+  clrSeed(el){charById(el.dataset.id).seed=null;markDirty(true);renderLeft()},
+  setSeed(el){const c=charById(el.dataset.id),cu=cur(selPanel());if(!cu)return;c.seed=cu;markDirty(true);renderLeft();toast(`Seed panel set for ${c.name}. It is now attached to every panel with ${c.name}.`)},
+  /* layout */
+  setLayout(el){const v=el.dataset.v;if(P.mode==='manga')P.layout.manga=v;else{P.layout.manhwa=v;const z=MANHWA[v].sizes;P.stripCount=z.length;ensurePanels(P);z.forEach((s,i)=>P.panels[i].size=s)}
+    ensurePanels(P);ui.sel=Math.min(ui.sel,panelCount(P)-1);ui.bub=null;markDirty();renderAll()},
+  addPanel(){P.stripCount++;ensurePanels(P);ui.sel=P.stripCount-1;markDirty();renderAll()},
+  delPanel(el){if(P.stripCount<=1)return;if(!confirmClick(el,'Click again to remove'))return;P.panels.splice(ui.sel,1);P.stripCount--;ensurePanels(P);ui.sel=Math.min(ui.sel,P.stripCount-1);ui.bub=null;markDirty();renderAll()},
+  setLook(el){P.look[el.dataset.k]=el.dataset.v;markDirty();renderLeft()},
+  async paletteFromSource(el){await busy(el,async()=>{P.palette=await paletteFrom(P.source.ref);markDirty();renderLeft();toast('Colours taken from the source picture.')})},
+  async plan(el){
+    if(!hasAI()){A.openSettings();return}
+    const n=panelCount(P),cast=P.cast.map(charById).filter(Boolean),poseNames=[...P.poses.filter(p=>!p.pending).map(p=>p.name),...Object.keys(POSE_PRESETS)];
+    await busy(el,async()=>{
+      try{
+        const r=await aiText(`You are a ${P.mode==='manga'?'manga':'manhwa/webtoon'} storyboard artist. Break this scene into exactly ${n} panels${P.mode==='manga'?' on one page that reads right to left':' in a vertical scroll strip'}.
+Scene: ${P.scene.text}
+Mood: ${P.scene.mood||'(not given)'}
+Characters: ${cast.map(c=>`${c.name} (${c.desc.trim()||'no description'})`).join('; ')||'none'}
+${P.source.analysis.subject?'Source picture: '+P.source.analysis.subject+' '+P.source.analysis.setting:''}
+Shot keys: ${Object.entries(SHOTS).map(([k,v])=>k+' = '+v).join(', ')}
+Pose names you may use: ${[...new Set(poseNames)].join(', ')}
+Reply with only JSON: {"panels":[{"shot": one shot key, "pose": one pose name from the list, "characters": [character names], "line": "what happens, one sentence", "mood": "2-4 words", "dialogue": [{"character": name or "", "type": "speech"|"thought"|"shout"|"narration", "text": "short line"}], "sfx": "sound effect word or empty string"}]}
+Vary the shots. Keep dialogue short (under 12 words a bubble, at most 2 bubbles a panel). Use the scene's own dialogue when it has some.`,{json:true});
+        const arr=Array.isArray(r.panels)?r.panels:[];if(!arr.length)throw{code:'invalid_json'};
+        arr.slice(0,n).forEach((x,i)=>{
+          const pn=P.panels[i];if(SHOTS[x.shot])pn.shot=x.shot;if(x.line)pn.line=String(x.line);pn.mood=x.mood?String(x.mood):'';
+          if(Array.isArray(x.characters))pn.chars=x.characters.map(nm=>LIB.chars.find(c=>c.name.toLowerCase()===String(nm).toLowerCase())).filter(Boolean).map(c=>c.id);
+          if(x.pose){let p=P.poses.find(q=>q.name.toLowerCase()===String(x.pose).toLowerCase()&&!q.pending);
+            if(!p&&POSE_PRESETS[x.pose]){p={id:uid(),name:x.pose,kind:'openpose',joints:clone(POSE_PRESETS[x.pose]),preset:x.pose};P.poses.push(p)}
+            if(p)pn.poseId=p.id}
+          if(pn.bubbles.every(b=>b.auto)){pn.bubbles=[];
+            (Array.isArray(x.dialogue)?x.dialogue:[]).slice(0,3).forEach((d,k)=>{const t=BTYPES[d.type]?d.type:'speech';const b=newBubble(t,P,k,String(d.text||''));b.auto=true;pn.bubbles.push(b)});
+            if(x.sfx){const b=newBubble('sfx',P,0,String(x.sfx));b.auto=true;b.by=.62;pn.bubbles.push(b)}}
+        });
+        markDirty();renderAll();toast(`Planned ${Math.min(n,arr.length)} panels. Click any panel to adjust it.`);
+      }catch(e){toast(aiErr(e))}
+    });
+  },
+  /* panels */
+  prevPanel(){if(ui.sel>0){ui.sel--;ui.bub=null;renderCenter();renderRight();renderLeft()}},
+  nextPanel(){if(ui.sel<panelCount(P)-1){ui.sel++;ui.bub=null;renderCenter();renderRight();renderLeft()}},
+  togglePanelChar(el){const pn=selPanel(),id=el.dataset.id;pn.chars=pn.chars.includes(id)?pn.chars.filter(x=>x!==id):[...pn.chars,id];markDirty();renderRight();if(P.step===5)renderLeft()},
+  /* generate */
+  copyPrompt(){copyText(buildPrompt(selPanel()))},
+  async refPack(el){
+    if(!window.JSZip){toast('The zip tool did not load. Reload the page and try again.');return}
+    await busy(el,async()=>{const pn=selPanel(),z=new JSZip();
+      for(const a of attachments(pn)){try{if(a.ref){const b=await blobOf(a.ref);z.file(`${a.file}.${ext(b)}`,b)}else if(a.joints)z.file(`${a.file}.png`,await skelBlob(a.joints))}catch(e){}}
+      z.file('prompt.txt',buildPrompt(pn));
+      await offer(`${slug(P.name)}-panel-${ui.sel+1}-references.zip`,await z.generateAsync({type:'blob'}))});
+  },
+  async upVar(el,files){const pn=selPanel();const fs=imgFiles(files).slice(0,4-pn.variations.length);if(!fs.length){toast(pn.variations.length>=4?'This panel already has 4 versions. Remove one first.':'Choose a picture file.');return}
+    for(const f of fs)pn.variations.push(await putImage(f));
+    if(pn.chosen<0){pn.chosen=0;pushHist(pn,pn.variations[0],'Version 1')}
+    markDirty();renderAll();toast(fs.length>1?`${fs.length} versions added to panel ${ui.sel+1}.`:`Version added to panel ${ui.sel+1}.`)},
+  pickVar(el){const pn=selPanel(),i=+el.dataset.v;pn.chosen=i;pushHist(pn,pn.variations[i],'Version '+(i+1));markDirty();renderAll()},
+  delVar(el){const pn=selPanel(),i=+el.dataset.v;if(!confirmClick(el,'Sure?'))return;pn.variations.splice(i,1);if(pn.chosen===i)pn.chosen=-1;else if(pn.chosen>i)pn.chosen--;markDirty();renderAll()},
+  /* refine */
+  undo(){const pn=selPanel();if(pn.h>0){pn.h--;markDirty();renderAll()}},
+  redo(){const pn=selPanel();if(pn.h<pn.history.length-1){pn.h++;markDirty();renderAll()}},
+  jumpHist(el){const pn=selPanel();pn.h=+el.dataset.v;markDirty();renderAll()},
+  async upEdit(el,files){const f=imgFiles(files)[0];if(!f)return;const pn=selPanel();
+    pushHist(pn,await putImage(f),'Edited version (uploaded)');markDirty();renderAll();toast('New version added. Undo takes you back.')},
+  async genPanel(el){
+    if(!hasAI()){A.openSettings();return}if(ui.gen)return;
+    const pn=selPanel(),i=ui.sel,total=Math.min(4-pn.variations.length,+SET.variations||2);if(total<1)return;
+    const ctl=new AbortController();ui.gen={panel:pn.id,done:0,total,ctl};renderLeft();
+    try{
+      const blobs=[];for(const a of attachments(pn)){try{blobs.push(a.ref?await blobOf(a.ref):await skelBlob(a.joints))}catch(e){}}
+      const prompt=buildPrompt(pn),aspect=ratioLabel(layoutRects(P)[i]);let made=0;
+      for(let k=0;k<total;k++){
+        try{const b=await aiImage(prompt+(k?`\n(Version ${k+1}: vary the composition slightly.)`:''),blobs,aspect,ctl.signal);
+          const ref=await putImage(b);pn.variations.push(ref);made++;
+          if(pn.chosen<0){pn.chosen=pn.variations.length-1;pushHist(pn,ref,'Version '+pn.variations.length)}
+          markDirty();ui.gen.done=k+1;renderAll();
+        }catch(e){if(e&&e.code==='cancelled')break;toast(aiErr(e));if(['bad_key','no_key','no_model','rate_limited','network'].includes(e&&e.code))break}
+      }
+      if(made)toast(`${made} version${made>1?'s':''} ready. Pick the best one.`);
+    }finally{ui.gen=null;renderAll()}
+  },
+  stopGen(){if(ui.gen&&ui.gen.ctl)ui.gen.ctl.abort()},
+  quickEdit(el){const t=$('#editIn');if(t){t.value=el.dataset.v;t.focus()}},
+  async applyEdit(){
+    if(!hasAI()){A.openSettings();return}if(ui.gen)return;
+    const box=$('#editIn'),msg=box&&box.value.trim();if(!msg){toast('Describe the change first.');if(box)box.focus();return}
+    const pn=selPanel(),cu=cur(pn);if(!cu)return;
+    const ctl=new AbortController();ui.gen={panel:pn.id,done:0,total:1,ctl};renderLeft();
+    try{
+      const chars=pn.chars.map(charById).filter(Boolean),refs=[await blobOf(cu)];
+      for(const c of chars){const r=c.refs.face||c.refs.front;if(r&&refs.length<4){try{refs.push(await blobOf(r))}catch(e){}}}
+      const prompt=`Edit the first attached image, a ${P.mode==='manga'?'black-and-white manga':'full-colour manhwa'} panel.
+Change: ${msg}
+Keep everything else exactly the same: the same characters, faces, hair, outfits, pose, camera angle, composition and art style${P.mode==='manga'?' (black and white ink with screentones, no colour)':''}.${refs.length>1?' The other attached pictures are character references, for identity only: '+chars.map(c=>c.name).join(', ')+'.':''}
+No text, no speech bubbles, no watermarks, no panel borders.`;
+      const b=await aiImage(prompt,refs,ratioLabel(layoutRects(P)[ui.sel]),ctl.signal);
+      pushHist(pn,await putImage(b),trunc(msg,80));markDirty();toast('Change applied. Undo takes you back.');
+    }catch(e){if(!(e&&e.code==='cancelled'))toast(aiErr(e))}
+    finally{ui.gen=null;renderAll()}
+  },
+  /* lettering */
+  addBub(el){const pn=selPanel(),t=el.dataset.v,b=newBubble(t,P,pn.bubbles.filter(x=>x.type!=='sfx').length);pn.bubbles.push(b);ui.bub=b.id;markDirty();renderBubbles();renderLeft();renderRight();const tx=$('#bubText');if(tx){tx.focus();tx.select()}},
+  selBub(el){ui.bub=el.dataset.id;renderBubbles();renderLeft();renderRight()},
+  deselBub(){ui.bub=null;renderBubbles();renderRight();if(P.step===7)renderLeft()},
+  delBub(){if(!ui.bub)return;P.panels.forEach(pn=>pn.bubbles=pn.bubbles.filter(b=>b.id!==ui.bub));ui.bub=null;markDirty();renderBubbles();renderRight();if(P.step===7)renderLeft()},
+  /* export */
+  async exPanel(el){await busy(el,async()=>{const pn=selPanel(),i=ui.sel;
+    if(el.dataset.v==='clean'){const b=await blobOf(cur(pn));await offer(`${slug(P.name)}-panel-${i+1}-art.${ext(b)}`,b)}
+    else await offer(`${slug(P.name)}-panel-${i+1}.png`,await panelBlob(i,true))})},
+  async exPage(el){await busy(el,async()=>{const c=await drawPage(P.mode==='manga'?2:1,true);if(await offer(`${slug(P.name)}-${P.mode==='manga'?'page':'strip'}.png`,await canvasBlob(c))){P.exported=true;markDirty();renderSteps()}})},
+  async exSlices(el){if(!window.JSZip){toast('The zip tool did not load. Reload the page.');return}await busy(el,async()=>{const z=new JSZip();await addSlices(z,'');await offer(`${slug(P.name)}-webtoon-pieces.zip`,await z.generateAsync({type:'blob'}))})},
+  async exJson(el){await busy(el,async()=>{await offer(`${slug(P.name)}.panelforge.json`,await projectJSON())})},
+  async imJson(el,files){const f=files&&files[0];if(!f)return;
+    try{const d=JSON.parse(await f.text());if(d.app!=='panel-forge'||!d.project)throw 0;toast('Opening project…');
+      const conv=async o=>{if(Array.isArray(o)){for(let i=0;i<o.length;i++)o[i]=await conv(o[i]);return o}if(o&&typeof o==='object'){for(const k of Object.keys(o))o[k]=await conv(o[k]);return o}
+        if(typeof o==='string'&&o.startsWith('data:image/')){const b=await (await fetch(o)).blob();return putImage(b)}return o};
+      await conv(d);if(dirty)await saveNow();
+      (d.characters||[]).forEach(c=>{if(!charById(c.id))LIB.chars.push(c)});
+      P=migrate({...d.project,id:uid()});await hydrate(P);await hydrate(LIB.chars);ui.sel=0;ui.bub=null;markDirty(true);renderAll();toast('Project opened as a new copy.');
+    }catch(e){toast("That file isn't a Panel Forge project.")}},
+  async exAll(el){
+    if(!window.JSZip){toast('The zip tool did not load. Reload the page.');return}
+    await busy(el,async()=>{const z=new JSZip(),n=panelCount(P),root=slug(P.name)+'/';
+      for(let i=0;i<n;i++){const pn=P.panels[i];z.file(`${root}panels/panel-${i+1}-lettered.png`,await panelBlob(i,true));
+        if(cur(pn)){try{const b=await blobOf(cur(pn));z.file(`${root}panels/panel-${i+1}-art.${ext(b)}`,b)}catch(e){}}
+        z.file(`${root}prompts/panel-${i+1}.txt`,buildPrompt(pn))}
+      if(P.mode==='manga')z.file(`${root}page.png`,await canvasBlob(await drawPage(2,true)));
+      else{z.file(`${root}strip.png`,await canvasBlob(await drawPage(1,true)));await addSlices(z,root+'webtoon-pieces/')}
+      z.file(`${root}veo-prompts.txt`,veoText());z.file(`${root}${slug(P.name)}.panelforge.json`,await projectJSON());
+      if(await offer(`${slug(P.name)}-PanelForge.zip`,await z.generateAsync({type:'blob'}))){P.exported=true;markDirty();renderSteps()}});
+  },
+  /* animate */
+  async veoAll(el){
+    if(!hasAI()){A.openSettings();return}
+    const vis=P.panels.slice(0,panelCount(P));ui.busy.veo=true;renderLeft();el=$('[data-act=veoAll]');
+    await busy(el,async()=>{
+      try{const r=await aiText(`Write Google Veo video prompts to animate each panel of this ${P.mode==='manga'?'black-and-white manga page':'full-colour manhwa strip'}.
+Scene: ${P.scene.text||'(none)'}  Mood: ${P.scene.mood||'(none)'}
+Panels:
+${vis.map((pn,i)=>`${i+1}. ${SHOTS[pn.shot]}. ${pn.line||'(no action)'}. Characters: ${pn.chars.map(charById).filter(Boolean).map(c=>c.name+' - '+(c.desc.trim()||'no description')).join('; ')||'none'}. Dialogue: ${pn.bubbles.map(b=>b.text).join(' / ')||'none'}`).join('\n')}
+Reply with only JSON: {"panels":[{"panel": number, "veo": string, "foreground": string, "character": string, "background": string}]}
+"veo" is a ready-to-paste prompt of 4 to 6 short lines labelled Camera:, Subject motion:, Mood & lighting:, Duration: (4-8 seconds), Audio:. Keep the ${P.mode==='manga'?'black-and-white ink and screentone':'cel-shaded colour'} look.
+foreground / character / background: what goes on each 2.5D parallax layer and how that layer moves, one sentence each.`,{json:true});
+        (Array.isArray(r.panels)?r.panels:[]).forEach((x,k)=>{const i=(+x.panel||k+1)-1,pn=vis[i];if(!pn)return;pn.veo={prompt:String(x.veo||''),fg:String(x.foreground||''),ch:String(x.character||''),bg:String(x.background||'')}});
+        markDirty();toast('Veo prompts ready.');
+      }catch(e){toast(aiErr(e))}
+    });
+    ui.busy.veo=false;renderLeft();renderSteps();
+  },
+  copyVeo(el){const pn=P.panels[+el.dataset.v];if(pn&&pn.veo)copyText(pn.veo.prompt+'\n\nParallax layers\nForeground: '+pn.veo.fg+'\nCharacter: '+pn.veo.ch+'\nBackground: '+pn.veo.bg)},
+  async exVeo(){await offer(`${slug(P.name)}-veo-prompts.txt`,veoText())},
+};
+function pushHist(pn,ref,note){pn.history=pn.history.slice(0,pn.h+1);pn.history.push({ref,note});pn.h=pn.history.length-1}
+const slug=s=>String(s||'project').toLowerCase().replace(/[^a-z0-9ก-๙]+/gi,'-').replace(/^-|-$/g,'')||'project';
+const ext=b=>({'image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'}[b.type]||'png');
+async function offer(filename,data){
+  try{
+    const type=/\.json$/.test(filename)?'application/json':/\.txt$/.test(filename)?'text/plain':undefined;
+    const blob=data instanceof Blob?data:new Blob([data],type?{type}:{});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),30000);toast('Downloaded '+filename);return true;
+  }catch(e){toast('Could not save the file.');return false}
+}
+function veoText(){return P.panels.slice(0,panelCount(P)).map((pn,i)=>{const v=pn.veo||{};return `PANEL ${i+1} · ${SHOTS[pn.shot]}\n${pn.line||''}\n\nVEO PROMPT\n${v.prompt||'(not written yet)'}\n\nPARALLAX LAYERS\nForeground: ${v.fg||'-'}\nCharacter: ${v.ch||'-'}\nBackground: ${v.bg||'-'}\n`}).join('\n────────────────────────\n\n')}
+async function projectJSON(){
+  const p=clone(P),chars=clone(LIB.chars);
+  const conv=async o=>{if(Array.isArray(o)){for(let i=0;i<o.length;i++)o[i]=await conv(o[i]);return o}if(o&&typeof o==='object'){for(const k of Object.keys(o))o[k]=await conv(o[k]);return o}
+    if(isRef(o)){try{const b=await blobOf(o);return await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b)})}catch(e){return null}}return o};
+  await conv(p);await conv(chars);
+  return JSON.stringify({app:'panel-forge',version:1,saved:new Date().toISOString(),project:p,characters:chars});
+}
+
+/* ---------- drawing for export ---------- */
+async function fontsReady(){try{await Promise.all(Object.values(FONTS).map(f=>document.fonts.load(`${f.w} 32px ${f.fam}`)))}catch(e){}}
+async function drawPage(scale,lettering){
+  const {w,h}=pageSize(P),c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);
+  const x=c.getContext('2d');x.scale(scale,scale);x.fillStyle='#fff';x.fillRect(0,0,w,h);
+  const rects=layoutRects(P);
+  for(let i=0;i<rects.length;i++){
+    const r=rects[i],pn=P.panels[i],u=urlOf(cur(pn));
+    x.save();x.beginPath();x.rect(r.x,r.y,r.w,r.h);x.clip();
+    let drawn=false;
+    if(u){try{const im=await loadImg(u),s=Math.max(r.w/im.naturalWidth,r.h/im.naturalHeight),dw=im.naturalWidth*s,dh=im.naturalHeight*s;x.drawImage(im,r.x+(r.w-dw)/2,r.y+(r.h-dh)/2,dw,dh);drawn=true}catch(e){}}
+    if(!drawn){x.fillStyle='#eeebe5';x.fillRect(r.x,r.y,r.w,r.h);x.fillStyle='#bdb7ac';x.font='700 48px "Chakra Petch", sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(String(i+1),r.x+r.w/2,r.y+r.h/2)}
+    x.restore();
+    if(P.mode==='manga'){x.lineWidth=5;x.strokeStyle='#111';x.strokeRect(r.x,r.y,r.w,r.h)}
+  }
+  if(lettering){await fontsReady();rects.forEach((r,i)=>P.panels[i].bubbles.forEach(b=>drawBubble(x,bubGeom(b,r))))}
+  return c;
+}
+async function panelBlob(i,lettering){
+  const r=layoutRects(P)[i],scale=2,page=await drawPage(scale,lettering),c=document.createElement('canvas');
+  c.width=Math.round(r.w*scale);c.height=Math.round(r.h*scale);c.getContext('2d').drawImage(page,r.x*scale,r.y*scale,r.w*scale,r.h*scale,0,0,c.width,c.height);
+  return canvasBlob(c);
+}
+async function addSlices(z,prefix){
+  const page=await drawPage(1,true),n=Math.ceil(page.height/SLICE_H);
+  for(let k=0;k<n;k++){const h=Math.min(SLICE_H,page.height-k*SLICE_H),c=document.createElement('canvas');c.width=STRIP_W;c.height=h;c.getContext('2d').drawImage(page,0,k*SLICE_H,STRIP_W,h,0,0,STRIP_W,h);z.file(`${prefix}${String(k+1).padStart(2,'0')}.png`,await canvasBlob(c))}
+}
+async function paletteFrom(ref){
+  const im=await loadImg(urlOf(ref)),c=document.createElement('canvas');c.width=48;c.height=48;const x=c.getContext('2d');x.drawImage(im,0,0,48,48);
+  const d=x.getImageData(0,0,48,48).data,m=new Map();
+  for(let i=0;i<d.length;i+=4){const k=(d[i]>>5)<<6|(d[i+1]>>5)<<3|(d[i+2]>>5);const e=m.get(k)||[0,0,0,0];e[0]+=d[i];e[1]+=d[i+1];e[2]+=d[i+2];e[3]++;m.set(k,e)}
+  const cols=[...m.values()].sort((a,b)=>b[3]-a[3]).map(e=>[e[0]/e[3],e[1]/e[3],e[2]/e[3]]),out=[];
+  for(const c1 of cols){if(out.every(o=>Math.hypot(o[0]-c1[0],o[1]-c1[1],o[2]-c1[2])>60))out.push(c1);if(out.length>=6)break}
+  while(out.length<6)out.push(cols[out.length]||[128,128,128]);
+  return out.map(c1=>'#'+c1.map(v=>Math.round(v).toString(16).padStart(2,'0')).join(''));
+}
+async function detectPoseKind(file){
+  try{
+    const bmp=await createImageBitmap(file),c=document.createElement('canvas');c.width=64;c.height=64;const x=c.getContext('2d');x.drawImage(bmp,0,0,64,64);
+    const d=x.getImageData(0,0,64,64).data,n=4096;let dark=0,light=0,sat=0,mid=0;const levels=new Set();
+    for(let i=0;i<d.length;i+=4){const mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]),l=(mx+mn)/2;
+      if(mx<40)dark++;if(mn>215)light++;if(mx-mn>70&&mx>120)sat++;if(mx-mn<18){levels.add(mx>>4);if(l>=40&&l<=215)mid++}}
+    const fd=dark/n,fl=light/n,fs=sat/n,fm=mid/n;
+    if(fd>.5&&fs>.01&&fs<.4)return 'openpose';
+    if(fs<.02&&levels.size>=7&&fm>.25)return 'depth';
+    if(fs<.02&&fl>.5&&fd<.12)return 'lineart';
+    if(fs<.02&&fd+fl>.85)return 'silhouette';
+    return 'clean';
+  }catch(e){return 'clean'}
+}
+
+/* ---------- settings form, install, offline ---------- */
+function readSettingsForm(){SET.key=$('#setKey').value.trim();SET.textModel=$('#setText').value.trim()||DEFAULT_SET.textModel;SET.imageModel=$('#setImage').value.trim()||DEFAULT_SET.imageModel;SET.variations=+$('#setVars').value||2}
+document.addEventListener('change',e=>{if(e.target.id==='setShow')$('#setKey').type=e.target.checked?'text':'password'});
+let installEvt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;const b=$('#installBtn');if(b)b.hidden=false});
+window.addEventListener('appinstalled',()=>{installEvt=null;const b=$('#installBtn');if(b)b.hidden=true});
+if('serviceWorker' in navigator&&location.protocol!=='file:')window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+
+/* ---------- boot ---------- */
+P=newProject(true);LIB.chars=defaultChars();
+renderAll();
+document.fonts&&document.fonts.ready.then(()=>renderBubbles());
+(async()=>{
+  try{
+    const lib=await idb.get('kv','library');
+    if(lib&&Array.isArray(lib.chars))LIB.chars=lib.chars;else libDirty=true;
+    await hydrate(LIB.chars);
+    await refreshProjects();
+    let last=null;try{last=localStorage.getItem('pf-last')}catch(e){}
+    const pick=PROJECTS.find(p=>p.id===last)||PROJECTS[0];
+    if(pick&&exampleUntouched){await loadProject(pick.id);return}
+    markDirty(true);
+  }catch(e){toast('This browser is blocking storage, so projects cannot be saved. Use step 8 to download a project file.')}
+  renderAll();
+})();
+</script>
+</body>
+</html>

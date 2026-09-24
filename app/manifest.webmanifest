@@ -1,0 +1,25 @@
+{
+  "id": "./",
+  "name": "Panel Forge",
+  "short_name": "Panel Forge",
+  "description": "Turn any picture into posed, lettered manga pages and manhwa webtoon strips with Gemini.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#131216",
+  "theme_color": "#131216",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["graphics", "productivity", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "screenshots": [
+    { "src": "icons/screenshot-wide.png", "sizes": "1440x900", "type": "image/png", "form_factor": "wide", "label": "Planning a 4-panel manga page" }
+  ]
+}
