@@ -132,6 +132,7 @@ input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px}
 dialog{background:var(--bg2);color:var(--text);border:1px solid var(--line2);border-radius:14px;padding:0;width:min(640px,calc(100% - 32px));max-height:calc(100% - 32px);box-shadow:0 30px 80px rgba(0,0,0,.6)}
 dialog::backdrop{background:rgba(8,7,10,.7)}
 .dlg{padding:20px;display:grid;gap:14px}
+.pose-card.bg-card img{aspect-ratio:4/3;object-fit:cover;background:var(--panel)}
 /* pose */
 .pose-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
 .pose-card{border:1px solid var(--line2);border-radius:10px;padding:6px;background:var(--bg2);cursor:pointer;display:grid;gap:5px;text-align:left}
@@ -251,9 +252,9 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- constants ---------- */
 const STEPS=[
-  ['Add background','Add a picture of the place where your scene happens: a street, room, rooftop, forest… Claude reads it, and every panel is drawn in that setting in manga or manhwa style.'],
-  ['Pose','Choose how the character stands or moves: upload a pose file, build a stick figure, or use a photo of yourself.'],
+  ['Add background','Add pictures of the places where your story happens, from any picture file on your computer. Then choose which panels use each background. Claude redraws it in manga or manhwa style.'],
   ['Characters','Lock in who appears, so they look the same in every panel.'],
+  ['Pose','Choose how the character stands or moves: upload a pose file, build a stick figure, or use a photo of yourself.'],
   ['Layout','Pick a page or strip layout, set the look, and plan what happens in each panel.'],
   ['Generate','Get the art for each panel. Copy the prompt into Gemini, then bring the pictures back here and pick the best one.'],
   ['Refine','Describe a change ("make her look angrier") and Claude writes the edit for Gemini. Every version is kept.'],
@@ -552,13 +553,13 @@ function defaultChars(){return[
   {id:'jirad',name:'JIRAD',accent:'#d8a540',desc:'Male. ',refs:{front:null,side:null,back:null,face:null},seed:null},
   {id:'roven',name:'ROVEN',accent:'#c7743a',desc:'Female. ',refs:{front:null,side:null,back:null,face:null},seed:null},
 ]}
-function newPanel(p){return{id:uid(),useBg:true,shot:'med',poseId:p.poses[0]?p.poses[0].id:null,chars:[...p.cast],line:'',mood:'',outfitOverride:false,outfitNote:'',space:'top',size:'standard',variations:[],chosen:-1,history:[],h:-1,bubbles:[],veo:null}}
+function newPanel(p){return{id:uid(),bgId:null,shot:'med',poseId:p.poses[0]?p.poses[0].id:null,chars:[...p.cast],line:'',mood:'',outfitOverride:false,outfitNote:'',space:'top',size:'standard',variations:[],chosen:-1,history:[],h:-1,bubbles:[],veo:null}}
 function panelCount(p){return p.mode==='manga'?MANGA[p.layout.manga].r.length:p.stripCount}
 function ensurePanels(p){while(p.panels.length<panelCount(p))p.panels.push(newPanel(p))}
 function newProject(example){
   const p={id:uid(),name:example?'Rooftop pendant':'Untitled chapter',mode:'manga',step:1,updated:Date.now(),
     source:{ref:null,analysis:{subject:'',outfit:'',setting:'',time:'',details:'',lighting:'',mood:''},realPerson:false,permission:false},
-    poses:[],poseSel:null,layout:{manga:'4',manhwa:'opening'},stripCount:4,gutter:100,
+    backgrounds:[],bgSel:null,poses:[],poseSel:null,layout:{manga:'4',manhwa:'opening'},stripCount:4,gutter:100,
     look:{line:'medium',shading:'medium',bg:'simple'},
     palette:['#1c2240','#3a5a8a','#e6bf78','#c7743a','#f3ede2','#6a3a4a'],
     scene:{text:example?EXAMPLE_SCENE:'',mood:example?'quiet, rainy, city lights':''},cast:['jirad','roven'],panels:[]};
@@ -585,11 +586,20 @@ function migrate(d){
   p.source={...b.source,...(d.source||{})};p.source.analysis={...b.source.analysis,...((d.source||{}).analysis||{})};
   p.scene={...b.scene,...(d.scene||{})};
   p.panels=(d.panels||[]).map(x=>({...newPanel(p),...x}));
+  if(!Array.isArray(p.backgrounds))p.backgrounds=[];
+  if(p.source&&p.source.ref&&!p.backgrounds.length){
+    const b={id:uid(),name:p.source.analysis.setting?trunc(p.source.analysis.setting,40):'Background 1',ref:p.source.ref,analysis:{setting:'',time:'',details:'',lighting:'',mood:'',...p.source.analysis},realPerson:!!p.source.realPerson,permission:!!p.source.permission};
+    p.backgrounds.push(b);p.bgSel=b.id;p.panels.forEach(x=>{if(x.useBg!==false)x.bgId=b.id});p.source.ref=null;
+  }
   ensurePanels(p);return p;
 }
 const selPanel=()=>P.panels[ui.sel];
 const charById=id=>LIB.chars.find(c=>c.id===id);
 const poseById=id=>P.poses.find(p=>p.id===id);
+const bgById=id=>id?P.backgrounds.find(b=>b.id===id)||null:null;
+const panelBg=pn=>pn?bgById(pn.bgId):null;
+const selBg=()=>bgById(P.bgSel)||P.backgrounds[0]||null;
+function newBg(ref,name){return{id:uid(),name:name||('Background '+(P.backgrounds.length+1)),ref,analysis:{setting:'',time:'',details:'',lighting:'',mood:''},realPerson:false,permission:false}}
 const cur=pn=>pn&&pn.h>=0&&pn.history[pn.h]?pn.history[pn.h].ref:null;
 function selBubble(){if(!ui.bub)return null;for(const pn of P.panels){const b=pn.bubbles.find(x=>x.id===ui.bub);if(b)return b}return null}
 
@@ -703,7 +713,7 @@ function readingOrder(pn){const rtl=P.mode==='manga';return[...pn.bubbles].sort(
 /* ---------- prompt builder ---------- */
 function buildPrompt(pn){
   const i=P.panels.indexOf(pn),rects=layoutRects(P),r=rects[i];
-  const chars=pn.chars.map(charById).filter(Boolean),pose=poseById(pn.poseId),A=P.source.analysis;
+  const chars=pn.chars.map(charById).filter(Boolean),pose=poseById(pn.poseId),bg=panelBg(pn),A=(bg&&bg.analysis)||{};
   const L=P.look,out=[];
   if(P.mode==='manga')out.push(`MANGA panel. Black and white only: clean ink lines (${L.line} line weight), screentone shading (${L.shading} intensity), speed lines where there is motion, dramatic solid blacks. No colour.`);
   else out.push(`MANHWA / WEBTOON panel. Full colour: soft cel shading (${L.shading} intensity), glowing highlights, cinematic lighting, ${L.line} line weight. Keep to this colour palette: ${P.palette.join(', ')}.`);
@@ -721,7 +731,7 @@ function buildPrompt(pn){
     out.push(s);
   }
   out.push(`Shot: ${SHOTS[pn.shot]||'Medium shot'}.`);
-  const bgOn=P.source.ref&&pn.useBg!==false,place=[A.setting,A.time].filter(Boolean).join(', '),detail=P.look.bg==='none'?' Keep it plain and faint behind the characters.':P.look.bg==='simple'?' Keep it simple so the characters stand out.':' Draw it fully detailed.';
+  const bgOn=!!(bg&&bg.ref),place=[A.setting,A.time].filter(Boolean).join(', '),detail=P.look.bg==='none'?' Keep it plain and faint behind the characters.':P.look.bg==='simple'?' Keep it simple so the characters stand out.':' Draw it fully detailed.';
   if(bgOn)out.push(`Background: use the attached background picture as the setting${place?' ('+place+')':''}. Redraw it in the same ${P.mode==='manga'?'black-and-white manga':'full-colour manhwa'} style as the characters, keeping its layout and landmarks${A.details?' ('+A.details+')':''}, seen from the camera angle of this shot.${detail}`);
   else out.push(`Background: ${place||'from the scene description'}.${detail}`);
   const mood=[pn.mood||P.scene.mood,A.lighting].filter(Boolean).join('; ');if(mood)out.push(`Mood/lighting: ${mood}.`);
@@ -735,7 +745,7 @@ function buildPrompt(pn){
 }
 function attachments(pn){
   const a=[];
-  if(P.source.ref&&pn.useBg!==false)a.push({label:'background picture',ref:P.source.ref,file:'01-background'});
+  {const bg=panelBg(pn);if(bg&&bg.ref)a.push({label:`background picture (${bg.name})`,ref:bg.ref,file:'01-background'})}
   const pose=poseById(pn.poseId);
   if(pose)a.push({label:`pose reference (${pose.name})`,ref:pose.ref||null,joints:pose.joints||null,file:'02-pose'});
   pn.chars.map(charById).filter(Boolean).forEach(c=>{
@@ -793,7 +803,7 @@ function renderTop(){
 }
 function stepDone(n){
   const vis=P.panels.slice(0,panelCount(P));
-  return[!!P.source.ref,P.poses.some(p=>!p.pending),P.cast.length>0&&P.cast.every(id=>{const c=charById(id);return c&&Object.values(c.refs).some(Boolean)}),vis.some(p=>p.line),vis.length>0&&vis.every(p=>cur(p)),vis.some(p=>p.history.length>1),vis.some(p=>p.bubbles.length),!!P.exported,vis.length>0&&vis.every(p=>p.veo&&p.veo.prompt)][n-1];
+  return[P.backgrounds.length>0,P.cast.length>0&&P.cast.every(id=>{const c=charById(id);return c&&Object.values(c.refs).some(Boolean)}),P.poses.some(p=>!p.pending),vis.some(p=>p.line),vis.length>0&&vis.every(p=>cur(p)),vis.some(p=>p.history.length>1),vis.some(p=>p.bubbles.length),!!P.exported,vis.length>0&&vis.every(p=>p.veo&&p.veo.prompt)][n-1];
 }
 function renderSteps(){
   $('#steps').innerHTML=STEPS.map(([n,t],i)=>`<button class="step ${P.step===i+1?'on':''} ${stepDone(i+1)?'done':''}" data-act="goStep" data-v="${i+1}" title="${esc(t)}" ${P.step===i+1?'aria-current="step"':''}><span class="n">${i+1}</span><span class="lbl">${n}</span></button>`).join('');
@@ -801,7 +811,7 @@ function renderSteps(){
 function renderLeft(){
   const n=P.step,[name,help]=STEPS[n-1];
   let body='';
-  try{body=[null,stepUpload,stepPose,stepChars,stepLayout,stepGenerate,stepRefine,stepLetter,stepExport,stepAnimate][n]()}catch(e){console.error(e);body='<p class="note bad">Something went wrong drawing this step.</p>'}
+  try{body=[null,stepUpload,stepChars,stepPose,stepLayout,stepGenerate,stepRefine,stepLetter,stepExport,stepAnimate][n]()}catch(e){console.error(e);body='<p class="note bad">Something went wrong drawing this step.</p>'}
   $('#left').innerHTML=`<div class="eyebrow">Step ${n} of 9</div><h2>${name}</h2><p class="lead">${help}</p>${body}
   <div class="stepnav"><button class="btn" data-act="goStep" data-v="${n-1}" ${n<=1?'disabled':''}>← Back</button><button class="btn gold" data-act="goStep" data-v="${n+1}" ${n>=9?'disabled':''}>Next: ${n<9?STEPS[n][0]:''} →</button></div>`;
   afterLeft();
@@ -815,29 +825,36 @@ const dropZone=(act,title,sub,multi)=>`<div class="dropwrap"><label class="drop"
 
 /* step 1 */
 function stepUpload(){
-  const S=P.source,A=S.analysis,u=urlOf(S.ref);
-  const field=(k,l,ph)=>`<label class="f"><span>${l}</span><textarea rows="2" data-f="p.source.analysis.${k}" data-r="prompt" placeholder="${esc(ph)}">${esc(A[k])}</textarea></label>`;
-  return `<div class="sec first">
-    ${u?`<div class="img-box"><img src="${esc(u)}" alt="Background picture"></div><div class="row"><label class="btn sm grow"><input type="file" class="sr" data-act="upSource">Replace background</label><button class="btn sm ghost danger" data-act="clearSource">Remove</button></div>`
-      :dropZone('upSource','Drop a background picture here','A photo, drawing or screenshot of a place. Click to choose, or paste with Ctrl+V.')}
-    <p class="small muted">Tip: pictures without people work best. Your characters are added in the panels.</p>
+  const bg=selBg(),n=panelCount(P);
+  let s=`<div class="sec first"><h3>Your backgrounds (${P.backgrounds.length})</h3>
+    ${P.backgrounds.length?`<div class="pose-list">${P.backgrounds.map(b=>{const uses=P.panels.slice(0,n).map((pn,i)=>pn.bgId===b.id?i+1:0).filter(Boolean);return `<button class="pose-card bg-card ${bg&&b.id===bg.id?'on':''}" data-act="pickBg" data-id="${b.id}" title="${esc(b.name)}"><img src="${esc(urlOf(b.ref))}" alt=""><span class="nm">${esc(b.name)}</span><span class="tag ${uses.length?'gold':''}">${uses.length?(uses.length>1?'Panels ':'Panel ')+uses.join(', '):'Not used'}</span></button>`}).join('')}</div>`:''}
+    ${dropZone('upSource',P.backgrounds.length?'Add more backgrounds':'Drop background pictures here','Any picture file: JPG, PNG, WebP, HEIC, TIFF, PSD, camera RAW and more. Add several at once, or paste with Ctrl+V.',true)}
+    <p class="small muted">Tip: pictures without people work best. Your characters are added in the panels.</p></div>`;
+  if(!bg)return s+`<div class="sec"><p class="note small">No backgrounds yet. Panels without one get a setting made up from your scene text.</p></div>`;
+  const field=(k,l,ph)=>`<label class="f"><span>${l}</span><textarea rows="2" data-f="bg:${bg.id}.analysis.${k}" data-r="prompt" placeholder="${esc(ph)}">${esc(bg.analysis[k])}</textarea></label>`;
+  return s+`<div class="sec"><h3>Selected background</h3>
+    <div class="img-box"><img src="${esc(urlOf(bg.ref))}" alt="${esc(bg.name)}"></div>
+    <label class="f"><span>Name</span><input type="text" data-f="bg:${bg.id}.name" data-r="right" value="${esc(bg.name)}"></label>
+    <div class="row"><label class="btn sm grow"><input type="file" class="sr" data-act="replaceBg">Replace picture</label><button class="btn sm ghost danger" data-act="delBg">Delete</button></div>
+    ${bg.realPerson?`<div class="note warn"><b>This picture shows a real person.</b> Only use it if you have their permission, or pick a background without people.<label class="check" style="margin-top:8px"><input type="checkbox" data-f="bg:${bg.id}.permission" ${bg.permission?'checked':''}><span>I have their permission</span></label></div>`:''}
   </div>
-  ${S.realPerson?`<div class="note warn"><b>This picture shows a real person.</b> Only use it if you have their permission, or pick a background without people.<label class="check" style="margin-top:8px"><input type="checkbox" data-f="p.source.permission" ${S.permission?'checked':''}><span>I have their permission</span></label></div>`:''}
-  <div class="sec">
-    <h3>About this place</h3>
-    ${claudeBtn('analyze','Read this background',S.ref?'':'disabled')}
-    ${!S.ref?'<p class="small muted">Add a background first. You can also describe the place yourself.</p>':''}
+  <div class="sec"><h3>Use on panels</h3>
+    <div class="chips">${P.panels.slice(0,n).map((pn,i)=>{const o=bgById(pn.bgId),on=pn.bgId===bg.id;return `<button class="chip ${on?'on':''}" data-act="bgPanel" data-i="${i}" aria-pressed="${on}" title="${on?'Uses this background. Click to remove it.':o?'Uses '+esc(o.name)+'. Click to switch to this one.':'No background. Click to use this one.'}">${on?'✓ ':''}Panel ${i+1}${!on&&o?`<span class="small muted"> · ${esc(trunc(o.name,12))}</span>`:''}</button>`}).join('')}</div>
+    <div class="row"><button class="btn sm grow" data-act="bgAll" data-v="all">Use on all panels</button><button class="btn sm grow ghost" data-act="bgAll" data-v="none">Remove from all</button></div>
+    <p class="small muted">${P.mode==='manga'?'Manga panels are numbered right to left.':'Webtoon panels are numbered top to bottom.'} You can also change the selected panel's background in the inspector.</p></div>
+  <div class="sec"><h3>About this place</h3>
+    ${claudeBtn('analyze','Read this background')}
     ${field('setting','Place','e.g. school rooftop in a big city')}
     ${field('time','Time & weather','e.g. night, heavy rain')}
     ${field('details','Key details','Buildings, objects and landmarks to keep')}
     ${field('lighting','Lighting','Where the light comes from, how bright')}
     ${field('mood','Mood','The feeling of the place')}
-    <p class="small muted">Every panel uses this background unless you switch it off for a panel in the inspector. Choose how detailed it is in step 4.</p>
+    <p class="small muted">Choose how detailed backgrounds are drawn in step 4.</p>
   </div>`;
 }
 /* step 2 */
 function stepPose(){
-  const sel=poseById(P.poseSel),src=urlOf(P.source.ref);
+  const sel=poseById(P.poseSel),src=urlOf((panelBg(selPanel())||{}).ref);
   const card=p=>`<button class="pose-card ${p.id===P.poseSel?'on':''}" data-act="selPose" data-id="${p.id}" title="${esc(p.name)} · ${esc(POSE_KINDS[p.kind]||'')}">
     ${p.joints?`<canvas width="64" height="96" data-skel="${p.id}"></canvas>`:`<img src="${esc(urlOf(p.ref))}" alt="">`}
     <span class="nm">${esc(p.name)}</span>${p.pending?'<span class="tag warn">Check me</span>':`<span class="tag">${esc((POSE_KINDS[p.kind]||'').split(' ')[0])}</span>`}</button>`;
@@ -907,7 +924,7 @@ function stepLayout(){
     <div class="f"><span>Shading</span>${seg('shading',[['light','Light'],['medium','Medium'],['heavy','Heavy']])}</div>
     <div class="f"><span>Background detail</span>${seg('bg',[['none','None'],['simple','Simple'],['full','Full']])}</div>
     ${P.mode==='manhwa'?`<div class="f"><span>Project colours</span><div class="swatches">${P.palette.map((c,i)=>`<input type="color" value="${esc(c)}" data-f="p.palette.${i}" data-r="prompt" title="Colour ${i+1}">`).join('')}</div><small>Every panel uses these colours so the strip feels consistent.</small></div>
-      <button class="btn sm" data-act="paletteFromSource" ${P.source.ref?'':'disabled'}>Take colours from the background</button>`:''}
+      <button class="btn sm" data-act="paletteFromSource" ${selBg()?'':'disabled'}>Take colours from the selected background</button>`:''}
   </div>
   <div class="sec"><h3>Scene</h3>
     <label class="f"><span>What happens</span><textarea rows="5" data-f="p.scene.text" data-r="prompt" placeholder="Describe the scene in a few sentences. Add dialogue in quotes if you like.">${esc(P.scene.text)}</textarea>${P.scene.text===EXAMPLE_SCENE?'<small>Example scene. Replace it with yours.</small>':''}</label>
@@ -921,10 +938,10 @@ function stepLayout(){
 function stepGenerate(){
   const pn=selPanel(),att=attachments(pn),chars=pn.chars.map(charById).filter(Boolean);
   const warns=[];
-  if(!P.source.ref)warns.push('No background picture. The setting comes from your scene text only. Add one in step 1.');
+  const pbg=panelBg(pn);if(!pbg)warns.push('This panel has no background picture, so the setting comes from your scene text. Pick one in step 1 or in the inspector.');
   if(!poseById(pn.poseId))warns.push('No pose chosen for this panel. Pick one in the inspector.');
-  chars.forEach(c=>{if(!Object.values(c.refs).some(Boolean))warns.push(`${c.name} has no reference pictures. Add them in step 3.`)});
-  if(P.source.realPerson&&!P.source.permission)warns.push('The source photo shows a real person. Confirm you have permission in step 1.');
+  chars.forEach(c=>{if(!Object.values(c.refs).some(Boolean))warns.push(`${c.name} has no reference pictures. Add them in step 2.`)});
+  if(pbg&&pbg.realPerson&&!pbg.permission)warns.push('This panel\'s background shows a real person. Confirm you have permission in step 1.');
   const cu=cur(pn);
   return `<div class="sec first"><h3>Panel ${ui.sel+1} · ${esc(SHOTS[pn.shot])}</h3>
     ${warns.map(w=>`<p class="note warn small">${esc(w)}</p>`).join('')}
@@ -1008,7 +1025,7 @@ function pageSVG(){
     if(u)s+=`<image href="${esc(u)}" x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#cp${i})"/>`;
     else{
       const fs=Math.min(26,r.w/14);
-      const bu=pn.useBg!==false?urlOf(P.source.ref):'';
+      const bu=urlOf((panelBg(pn)||{}).ref);
       s+=`<rect x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" fill="url(#hatch)"/>${bu?`<image href="${esc(bu)}" x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#cp${i})" opacity="${P.mode==='manga'?.3:.4}" style="${P.mode==='manga'?'filter:grayscale(1)':''}"/>`:''}
       <text x="${f1(cx)}" y="${f1(cy-fs*1.2)}" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-weight="700" font-size="${f1(Math.min(84,r.w/5))}" fill="#c9c3b8">${i+1}</text>
       <text x="${f1(cx)}" y="${f1(cy+fs*1.4)}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="${f1(fs*.8)}" fill="#8e887e" letter-spacing="2">${esc(SHOTS[pn.shot].toUpperCase())}</text>
@@ -1060,7 +1077,7 @@ function renderRight(){
     <label class="f"><span>Camera shot</span><select data-f="pn.shot" data-r="prompt,canvas">${opt(SHOTS,pn.shot)}</select></label>
     <label class="f"><span>Pose</span><select data-f="pn.poseId" data-r="prompt,left5">${P.poses.filter(p=>!p.pending).map(p=>`<option value="${p.id}" ${pn.poseId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}<option value="" ${pn.poseId?'':'selected'}>No pose</option></select></label>
     <div class="f"><span>Characters</span><div class="chips">${castChars.map(c=>`<button class="chip ${pn.chars.includes(c.id)?'on':''}" data-act="togglePanelChar" data-id="${c.id}" aria-pressed="${pn.chars.includes(c.id)}"><span class="dot" style="background:${esc(c.accent)}"></span>${esc(c.name)}</button>`).join('')||'<span class="small muted">Add characters in step 3.</span>'}</div></div>
-    <label class="check"><input type="checkbox" data-f="pn.useBg" data-r="prompt,canvas,left5" ${pn.useBg!==false?'checked':''} ${P.source.ref?'':'disabled'}><span>Use the background picture <span class="small muted">${P.source.ref?'(untick for a plain or different background)':'(add one in step 1)'}</span></span></label>
+    <label class="f"><span>Background</span><select data-f="pn.bgId" data-r="prompt,canvas,left5,left1">${P.backgrounds.map(b=>`<option value="${b.id}" ${pn.bgId===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}<option value="" ${pn.bgId?'':'selected'}>None (plain, or from the scene text)</option></select>${P.backgrounds.length?'':'<small>Add backgrounds in step 1.</small>'}</label>
     <label class="check"><input type="checkbox" data-f="pn.outfitOverride" data-r="prompt,right" ${pn.outfitOverride?'checked':''}><span>Outfit override <span class="small muted">(allow a different outfit in this panel only)</span></span></label>
     ${pn.outfitOverride?`<label class="f"><span>New outfit</span><input type="text" data-f="pn.outfitNote" data-r="prompt" value="${esc(pn.outfitNote)}" placeholder="e.g. rain coat over the usual clothes"></label>`:''}
     <label class="f"><span>Mood</span><input type="text" data-f="pn.mood" data-r="prompt" value="${esc(pn.mood)}" placeholder="${esc(P.scene.mood||'Uses the scene mood')}"></label>
@@ -1077,6 +1094,7 @@ function resolvePath(path){
   if(head==='p')obj=P;else if(head==='pn')obj=selPanel();else if(head==='bb')obj=selBubble();
   else if(head.startsWith('ch:')){obj=charById(head.slice(3));lib=true}
   else if(head.startsWith('pose:'))obj=poseById(head.slice(5));
+  else if(head.startsWith('bg:'))obj=bgById(head.slice(3));
   else if(head.startsWith('veo:')){const pn=P.panels.find(x=>x.id===head.slice(4));if(pn)obj=pn.veo||(pn.veo={})}
   for(let i=0;i<parts.length-1;i++)obj=obj&&obj[parts[i]];
   return[obj,parts[parts.length-1],lib];
@@ -1092,6 +1110,7 @@ function onField(el){
   if(r.includes('gutter')){const s=el.closest('.f');if(s)s.querySelector('span').textContent=`Gap between panels · ${v} px`}
   if(r.includes('projname')){const o=$(`#projPick option[value="${CSS.escape(P.id)}"]`);if(o)o.textContent=trunc(v,28)}
   if(r.includes('left5')&&P.step===5)renderLeft();
+  if(r.includes('left1')&&P.step===1)renderLeft();
   const po=$('#promptOut');if(po)po.textContent=buildPrompt(selPanel());
   if(el.dataset.f.startsWith('bb.')&&P.step===7){const it=$(`.bub-item.on .tx`);if(it&&key==='text')it.textContent=v}
 }
@@ -1130,7 +1149,7 @@ document.addEventListener('drop',e=>{if(!e.target.closest('[data-drop]'))e.preve
 document.addEventListener('paste',e=>{
   const files=[...(e.clipboardData&&e.clipboardData.files||[])];if(!files.length)return;
   e.preventDefault();
-  const target={1:'upSource',2:'upPose',6:'upEdit'}[P.step]||'upVar';
+  const target={1:'upSource',3:'upPose',6:'upEdit'}[P.step]||'upVar';
   runAct(target,null,files);
 });
 document.addEventListener('keydown',e=>{
@@ -1153,7 +1172,7 @@ document.addEventListener('pointerdown',e=>{
     if(changedPanel||changedBub){renderRight();if(P.step===7||changedPanel&&[5,6,8].includes(P.step))renderLeft()}
     return;
   }
-  if(pg){const i=+pg.dataset.panel;const was=ui.sel;ui.sel=i;ui.bub=null;renderCenter();renderRight();if(was!==i&&[2,4,5,6,7,8].includes(P.step))renderLeft()}
+  if(pg){const i=+pg.dataset.panel;const was=ui.sel;ui.sel=i;ui.bub=null;renderCenter();renderRight();if(was!==i&&[1,3,4,5,6,7,8].includes(P.step))renderLeft()}
 });
 function moveSel(){const s=$('#selRect'),r=layoutRects(P)[ui.sel];if(s&&r){s.setAttribute('x',r.x-5);s.setAttribute('y',r.y-5);s.setAttribute('width',r.w+10);s.setAttribute('height',r.h+10)}}
 window.addEventListener('pointermove',e=>{
@@ -1190,15 +1209,27 @@ const A={
   async newProject(el){if(dirty&&DB)await saveNow();P=newProject(false);ensurePanels(P);ui.sel=0;ui.bub=null;markDirty();renderAll();toast('New project started');$('#projName').focus();$('#projName').select()},
   async pickProject(el){if(el.value===P.id)return;if(dirty)await saveNow();await loadProject(el.value)},
   /* upload */
-  async upSource(el,files){const f=(await readPictures(files,1))[0];if(!f)return;
-    toast('Adding background…');P.source.ref=await putImage(f);P.source.realPerson=false;P.source.permission=false;markDirty();renderAll();toast('Background added. Every panel will use it. Press "Read this background" next.')},
-  clearSource(el){if(!confirmClick(el,'Click again to remove'))return;P.source.ref=null;markDirty();renderAll()},
+  async upSource(el,files){
+    const fs=await readPictures(files,12);if(!fs.length)return;
+    const first=!P.backgrounds.length,added=[];
+    for(const f of fs){const b=newBg(await putImage(f),(f.name||'').replace(/\.[^.]+$/,'').slice(0,40));P.backgrounds.push(b);added.push(b)}
+    P.bgSel=added[0].id;
+    if(first)P.panels.forEach(pn=>{if(!pn.bgId)pn.bgId=added[0].id});
+    else if(added.length===1&&!selPanel().bgId)selPanel().bgId=added[0].id;
+    markDirty();renderAll();
+    toast(first?'Background added to every panel. Pick different ones per panel below.':`${added.length} background${added.length>1?'s':''} added. Click a background, then tick the panels that should use it.`);
+  },
+  pickBg(el){P.bgSel=el.dataset.id;renderLeft()},
+  async replaceBg(el,files){const b=selBg();if(!b)return;const f=(await readPictures(files,1))[0];if(!f)return;b.ref=await putImage(f);b.realPerson=false;b.permission=false;markDirty();renderAll();toast('Background replaced.')},
+  delBg(el){if(!confirmClick(el,'Click again to delete'))return;const b=selBg();if(!b)return;P.backgrounds=P.backgrounds.filter(x=>x!==b);P.panels.forEach(pn=>{if(pn.bgId===b.id)pn.bgId=null});P.bgSel=P.backgrounds[0]?P.backgrounds[0].id:null;markDirty();renderAll()},
+  bgPanel(el){const b=selBg();if(!b)return;const pn=P.panels[+el.dataset.i];pn.bgId=pn.bgId===b.id?null:b.id;markDirty();renderLeft();renderCenter();renderRight()},
+  bgAll(el){const b=selBg();if(!b)return;const on=el.dataset.v==='all';P.panels.slice(0,panelCount(P)).forEach(pn=>{if(on)pn.bgId=b.id;else if(pn.bgId===b.id)pn.bgId=null});markDirty();renderLeft();renderCenter();renderRight()},
   async analyze(el){
-    if(!SAMPLE){toast(noClaude);return}if(!P.source.ref)return;
+    if(!SAMPLE){toast(noClaude);return}const bg=selBg();if(!bg)return;
     if(!SAMPLE_IMG){toast('Claude cannot look at pictures in this view.');return}
     await busy(el,async()=>{
       try{
-        const blob=await blobOf(P.source.ref);
+        const blob=await blobOf(bg.ref);
         const r=await SAMPLE.json(`You are helping a comic artist use this picture as the BACKGROUND (the setting) for ${P.mode==='manga'?'manga':'manhwa'} panels. Describe the place so it can be redrawn behind the characters.
 Reply with only a JSON object: {"setting": string, "time": string, "details": string, "lighting": string, "mood": string, "realPerson": boolean}
 - setting: what kind of place this is. One short sentence.
@@ -1207,8 +1238,8 @@ Reply with only a JSON object: {"setting": string, "time": string, "details": st
 - lighting: light direction, quality and colour. Short phrase.
 - mood: 2 to 4 words.
 - realPerson: true if this is a real photograph that shows a real, identifiable person; false otherwise.`,{images:[blob]});
-        const a=P.source.analysis;['setting','time','details','lighting','mood'].forEach(k=>{if(typeof r[k]==='string')a[k]=r[k]});
-        P.source.realPerson=!!r.realPerson;if(!P.scene.mood&&a.mood)P.scene.mood=a.mood;markDirty();renderLeft();toast('Done. Edit anything that is wrong.');
+        const a=bg.analysis;['setting','time','details','lighting','mood'].forEach(k=>{if(typeof r[k]==='string')a[k]=r[k]});
+        bg.realPerson=!!r.realPerson;if(/^Background \d+$/.test(bg.name)&&a.setting)bg.name=trunc(a.setting,40);if(!P.scene.mood&&a.mood)P.scene.mood=a.mood;markDirty();renderLeft();toast('Done. Edit anything that is wrong.');
       }catch(e){toast(sampleErr(e))}
     });
   },
@@ -1257,7 +1288,7 @@ x and y are fractions from 0 to 1 of the image width and height, measured from t
   addPanel(){P.stripCount++;ensurePanels(P);ui.sel=P.stripCount-1;markDirty();renderAll()},
   delPanel(el){if(P.stripCount<=1)return;if(!confirmClick(el,'Click again to remove'))return;P.panels.splice(ui.sel,1);P.stripCount--;ensurePanels(P);ui.sel=Math.min(ui.sel,P.stripCount-1);ui.bub=null;markDirty();renderAll()},
   setLook(el){P.look[el.dataset.k]=el.dataset.v;markDirty();renderLeft()},
-  async paletteFromSource(el){await busy(el,async()=>{P.palette=await paletteFrom(P.source.ref);markDirty();renderLeft();toast('Colours taken from the background.')})},
+  async paletteFromSource(el){await busy(el,async()=>{P.palette=await paletteFrom(selBg().ref);markDirty();renderLeft();toast('Colours taken from the background.')})},
   async plan(el){
     if(!SAMPLE){toast(noClaude);return}
     const n=panelCount(P),cast=P.cast.map(charById).filter(Boolean),poseNames=[...P.poses.filter(p=>!p.pending).map(p=>p.name),...Object.keys(POSE_PRESETS)];
@@ -1267,15 +1298,16 @@ x and y are fractions from 0 to 1 of the image width and height, measured from t
 Scene: ${P.scene.text}
 Mood: ${P.scene.mood||'(not given)'}
 Characters: ${cast.map(c=>`${c.name} (${c.desc.trim()||'no description'})`).join('; ')||'none'}
-${P.source.analysis.setting?'Background / setting: '+[P.source.analysis.setting,P.source.analysis.time,P.source.analysis.details].filter(Boolean).join('; '):''}
+${P.backgrounds.length?'Background names you may use: '+P.backgrounds.map(b=>b.name+(b.analysis.setting?' ('+[b.analysis.setting,b.analysis.time].filter(Boolean).join(', ')+')':'')).join('; '):''}
 Shot keys: ${Object.entries(SHOTS).map(([k,v])=>k+' = '+v).join(', ')}
 Pose names you may use: ${[...new Set(poseNames)].join(', ')}
-Reply with only JSON: {"panels":[{"shot": one shot key, "pose": one pose name from the list, "characters": [character names], "line": "what happens, one sentence", "mood": "2-4 words", "dialogue": [{"character": name or "", "type": "speech"|"thought"|"shout"|"narration", "text": "short line"}], "sfx": "sound effect word or empty string"}]}
+Reply with only JSON: {"panels":[{"shot": one shot key, "pose": one pose name from the list, "characters": [character names], "line": "what happens, one sentence", "mood": "2-4 words", "dialogue": [{"character": name or "", "type": "speech"|"thought"|"shout"|"narration", "text": "short line"}], "sfx": "sound effect word or empty string", "background": "one background name from the list, or empty string"}]}
 Vary the shots. Keep dialogue short (under 12 words a bubble, at most 2 bubbles a panel). Use the scene's own dialogue when it has some.`);
         const arr=Array.isArray(r.panels)?r.panels:[];if(!arr.length)throw{code:'invalid_json'};
         arr.slice(0,n).forEach((x,i)=>{
           const pn=P.panels[i];if(SHOTS[x.shot])pn.shot=x.shot;if(x.line)pn.line=String(x.line);pn.mood=x.mood?String(x.mood):'';
           if(Array.isArray(x.characters))pn.chars=x.characters.map(nm=>LIB.chars.find(c=>c.name.toLowerCase()===String(nm).toLowerCase())).filter(Boolean).map(c=>c.id);
+          if(x.background&&P.backgrounds.length){const b=P.backgrounds.find(q=>q.name.toLowerCase()===String(x.background).toLowerCase());if(b)pn.bgId=b.id}
           if(x.pose){let p=P.poses.find(q=>q.name.toLowerCase()===String(x.pose).toLowerCase()&&!q.pending);
             if(!p&&POSE_PRESETS[x.pose]){p={id:uid(),name:x.pose,kind:'openpose',joints:clone(POSE_PRESETS[x.pose]),preset:x.pose};P.poses.push(p)}
             if(p)pn.poseId=p.id}
