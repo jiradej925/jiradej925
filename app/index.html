@@ -144,6 +144,14 @@ input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px}
 .stepnav{display:flex;gap:8px;margin-top:18px}
 .stepnav .btn{flex:1}
 
+.dropwrap{display:grid;gap:6px}
+.folderbtn{justify-self:center;color:var(--muted);border-color:transparent}
+.choose-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;max-height:min(56vh,520px);overflow:auto;padding:2px}
+.ch{display:grid;gap:4px;padding:5px;border:1px solid var(--line2);border-radius:10px;background:var(--bg);cursor:pointer;text-align:left;color:var(--text)}
+.ch .im{aspect-ratio:1;border-radius:6px;background:var(--panel);display:grid;place-items:center;overflow:hidden}
+.ch .im img{width:100%;height:100%;object-fit:cover}
+.ch .nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.ch:hover{border-color:var(--faint)}.ch.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}.ch.bad{opacity:.4}
 /* pose */
 .pose-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
 .pose-card{border:1px solid var(--line2);border-radius:10px;padding:6px;background:var(--bg2);cursor:pointer;display:grid;gap:5px;text-align:left}
@@ -248,6 +256,7 @@ input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px}
   <nav class="steps" id="steps" aria-label="Workflow steps"></nav>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
+<dialog id="chooser" aria-labelledby="chTitle"><div class="dlg"><div><div class="eyebrow">Choose from folder</div><h2 id="chTitle">Pick a picture</h2><p class="lead" id="chSub"></p></div><div class="choose-grid" id="chGrid"></div><div class="row"><button class="btn gold grow" data-act="chooserOk" id="chOk" disabled>Use selected</button><button class="btn ghost" data-act="chooserClose">Cancel</button></div></div></dialog>
 <dialog id="settings" aria-labelledby="setTitle">
   <form class="dlg" method="dialog" id="setForm">
     <div><div class="eyebrow">Settings</div><h2 id="setTitle">Connect Gemini</h2>
@@ -458,7 +467,174 @@ async function putImage(file){
   try{await idb.put('blobs',id,blob)}catch(e){toast('This computer is out of storage space for pictures. Free some space and try again.');throw e}
   urlCache.set(ref,URL.createObjectURL(blob));return ref;
 }
-const imgFiles=files=>[...(files||[])].filter(f=>f&&/^image\//.test(f.type));
+const LIBS={heic:['vendor/heic2any.min.js','heic2any'],utif:['vendor/utif.js','UTIF'],pako:['vendor/pako_inflate.min.js','pako'],psd:['vendor/ag-psd.js','agPsd']};
+/* ---------- opening any picture file ---------- */
+const libPromises={};
+function loadLib(key){
+  const [src,name]=LIBS[key];
+  return libPromises[key]||(libPromises[key]=new Promise((res,rej)=>{
+    if(window[name])return res(window[name]);
+    const s=document.createElement('script');s.src=src;
+    s.onload=()=>window[name]?res(window[name]):rej(new Error('lib'));
+    s.onerror=()=>{delete libPromises[key];rej(new Error('lib'))};
+    document.head.appendChild(s);
+  }));
+}
+class PicError extends Error{constructor(code){super(code);this.code=code}}
+const RAW_EXT=/\.(dng|nef|nrw|arw|srf|sr2|cr2|cr3|crw|raf|orf|rw2|pef|srw|x3f|3fr|erf|kdc|mos|mrw|raw|rwl|iiq)$/i;
+const PIC_EXT=/\.(png|jpe?g|jfif|pjpeg|gif|webp|bmp|dib|avif|heic|heif|tiff?|psd|ico|svg)$/i;
+function sniff(u8){
+  const at=(i,...b)=>b.every((v,k)=>u8[i+k]===v),str=(i,n)=>String.fromCharCode(...u8.slice(i,i+n));
+  if(at(0,0x89,0x50,0x4e,0x47))return 'image/png';
+  if(at(0,0xff,0xd8,0xff))return 'image/jpeg';
+  if(str(0,4)==='GIF8')return 'image/gif';
+  if(str(0,4)==='RIFF'&&str(8,4)==='WEBP')return 'image/webp';
+  if(str(0,2)==='BM')return 'image/bmp';
+  if(str(4,4)==='ftyp'){const br=str(8,Math.min(40,u8.length-8));if(/crx /.test(br))return 'raw';if(/avif|avis/.test(br))return 'image/avif';if(/hei[cxsm]|hev[cx]|mif1|msf1|heif/.test(br))return 'image/heic'}
+  if(at(0,0x49,0x49,0x2a,0)||at(0,0x4d,0x4d,0,0x2a))return str(8,2)==='CR'?'raw':'image/tiff';
+  if(at(0,0x49,0x49,0x52,0x4f)||at(0,0x49,0x49,0x55,0)||str(0,8)==='FUJIFILM')return 'raw';
+  if(str(0,4)==='8BPS')return 'image/vnd.adobe.photoshop';
+  if(at(0,0,0,1,0))return 'image/x-icon';
+  const head=new TextDecoder().decode(u8.slice(0,1024)).replace(/^﻿/,'').trimStart();
+  if(/^<svg[\s>]/i.test(head)||/^<\?xml[\s\S]*<svg[\s>]/i.test(head))return 'image/svg+xml';
+  return '';
+}
+async function canDecode(blob){try{const b=await createImageBitmap(blob);const ok=b.width>0&&b.height>0;b.close&&b.close();return ok}catch(e){return false}}
+async function viaImgTag(blob,fallbackSize){
+  const url=URL.createObjectURL(blob);
+  try{
+    const im=await loadImg(url);let w=im.naturalWidth,h=im.naturalHeight;
+    if(!w||!h){w=h=fallbackSize||1024}
+    const s=Math.min(1,4096/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*s);c.height=Math.round(h*s);
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);return await canvasBlob(c);
+  }finally{URL.revokeObjectURL(url)}
+}
+function jpegEnd(u8,s){
+  let i=s+2;
+  while(i+3<u8.length){
+    if(u8[i]!==0xff)return -1;
+    const m=u8[i+1];
+    if(m===0xff){i++;continue}
+    if(m===0xd9)return i+2;
+    if(m===0xd8||m===0x01||(m>=0xd0&&m<=0xd7)){i+=2;continue}
+    const len=(u8[i+2]<<8)|u8[i+3];
+    i+=2+len;
+    if(m===0xda){
+      while(i+1<u8.length){
+        if(u8[i]===0xff){const n=u8[i+1];if(n===0xd9)return i+2;if(n!==0&&n!==0xff&&!(n>=0xd0&&n<=0xd7))break}
+        i++;
+      }
+    }
+  }
+  return -1;
+}
+async function embeddedJpeg(u8){
+  const found=[];
+  for(let i=0;i+3<u8.length&&found.length<40;i++){
+    if(u8[i]===0xff&&u8[i+1]===0xd8&&u8[i+2]===0xff){const e=jpegEnd(u8,i);if(e>i&&e-i>16384)found.push([i,e])}
+  }
+  found.sort((a,b)=>(b[1]-b[0])-(a[1]-a[0]));
+  for(const [s,e] of found.slice(0,4)){const b=new Blob([u8.subarray(s,e)],{type:'image/jpeg'});if(await canDecode(b))return b}
+  return null;
+}
+async function decodeTiff(buf){
+  await loadLib('pako').catch(()=>{});
+  const U=await loadLib('utif'),ifds=U.decode(buf);
+  let best=null;for(const d of ifds){const w=d.t256?d.t256[0]:0,h=d.t257?d.t257[0]:0;if(!best||w*h>best.a)best={d,a:w*h}}
+  if(!best||!best.a)throw new Error('tiff');
+  U.decodeImage(buf,best.d,ifds);
+  const w=best.d.width,h=best.d.height,rgba=U.toRGBA8(best.d),c=document.createElement('canvas');c.width=w;c.height=h;
+  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer,rgba.byteOffset,w*h*4),w,h),0,0);
+  return canvasBlob(c);
+}
+async function decodePsd(buf){
+  const ag=await loadLib('psd'),psd=ag.readPsd(buf,{skipLayerImageData:true,skipThumbnail:false});
+  const cv=psd.canvas||(psd.imageResources&&psd.imageResources.thumbnail);
+  if(!cv)throw new Error('psd');
+  return canvasBlob(cv);
+}
+async function decodeAny(file){
+  let buf;
+  try{buf=await file.arrayBuffer()}catch(e){throw new PicError('cant_read')}
+  if(!buf||!buf.byteLength)throw new PicError('empty');
+  const u8=new Uint8Array(buf),name=file.name||'';
+  let kind=sniff(u8)||(RAW_EXT.test(name)?'raw':'');
+  const NATIVE=['image/png','image/jpeg','image/gif','image/webp','image/bmp','image/avif','image/x-icon'];
+  if(NATIVE.includes(kind)){
+    const b=new Blob([buf],{type:kind});
+    if(await canDecode(b))return b;
+    try{return await viaImgTag(b)}catch(e){}
+  }
+  if(kind==='image/svg+xml')return viaImgTag(new Blob([buf],{type:'image/svg+xml'}),1024);
+  if(kind==='image/heic'){
+    try{const h=await loadLib('heic');const out=await h({blob:new Blob([buf],{type:'image/heic'}),toType:'image/jpeg',quality:.92});return Array.isArray(out)?out[0]:out}
+    catch(e){const j=await embeddedJpeg(u8);if(j)return j;throw new PicError('heic')}
+  }
+  if(kind==='image/tiff'&&!RAW_EXT.test(name)){try{return await decodeTiff(buf)}catch(e){}}
+  if(kind==='image/vnd.adobe.photoshop'){try{return await decodePsd(buf)}catch(e){throw new PicError('psd')}}
+  const j=await embeddedJpeg(u8);if(j)return j;
+  if(kind==='image/tiff'){try{return await decodeTiff(buf)}catch(e){}}
+  const guess=new Blob([buf],{type:file.type||'image/png'});
+  if(await canDecode(guess))return guess;
+  try{return await viaImgTag(guess)}catch(e){}
+  throw new PicError(kind==='raw'?'raw':'unknown');
+}
+function picErr(e,f){
+  const n=f&&f.name?`"${trunc(f.name,40)}"`:'That file';
+  return({
+    cant_read:`${n} could not be opened. If it's in OneDrive, right-click it, choose "Always keep on this device", and try again.`,
+    empty:`${n} is empty.`,
+    heic:`${n} is an iPhone photo (HEIC) that could not be converted. Open it in Photos and save a copy as JPG.`,
+    psd:`${n} has no flattened image inside. In Photoshop, turn on "Maximize compatibility" when saving, or export a PNG.`,
+    raw:`${n} is a camera RAW file with no preview inside. Export it as JPG from your camera software.`,
+  })[e&&e.code]||`${n} isn't a picture Panel Forge can open. It opens PNG, JPG, WebP, GIF, BMP, AVIF, HEIC, TIFF, SVG, PSD, ICO and camera RAW files.`;
+}
+async function readPictures(files,max=1){
+  const list=[...(files||[])].filter(Boolean),out=[];
+  for(const f of list){
+    if(out.length>=max)break;
+    const slow=setTimeout(()=>toast(`Opening ${f.name||'picture'}…`),500);
+    try{const b=await decodeAny(f);out.push(new File([b],f.name||'picture',{type:b.type||'image/png'}))}
+    catch(e){toast(picErr(e,f))}
+    finally{clearTimeout(slow)}
+  }
+  return out;
+}
+async function looksLikePicture(f){
+  if(PIC_EXT.test(f.name)||RAW_EXT.test(f.name))return true;
+  if(!f.size||f.size>300e6)return false;
+  try{return !!sniff(new Uint8Array(await f.slice(0,1024).arrayBuffer()))}catch(e){return false}
+}
+async function filesFromDrop(dt){
+  const items=[...(dt.items||[])].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+  if(!items.some(en=>en.isDirectory))return {files:[...(dt.files||[])],folder:false};
+  const out=[];
+  const readDir=d=>new Promise(res=>{const r=d.createReader(),all=[];const next=()=>r.readEntries(es=>{if(!es.length)return res(all);all.push(...es);next()},()=>res(all));next()});
+  const walk=async en=>{if(out.length>=400)return;if(en.isFile){await new Promise(r=>en.file(f=>{out.push(f);r()},()=>r()))}else if(en.isDirectory){for(const c of await readDir(en))await walk(c)}};
+  for(const en of items)await walk(en);
+  return {files:out,folder:true};
+}
+async function openChooser(files,act,max,el){
+  const pics=[];for(const f of files){if(pics.length>=240)break;if(await looksLikePicture(f))pics.push(f)}
+  if(!pics.length){toast('No pictures found in that folder.');return}
+  if(pics.length===1){runAct(act,el,pics);return}
+  pics.sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,undefined,{numeric:true}));
+  ui.chooser={files:pics,act,max,el,sel:new Set()};
+  $('#chTitle').textContent=max>1?`Pick up to ${max} pictures`:'Pick a picture';
+  $('#chSub').textContent=`${pics.length} picture${pics.length>1?'s':''} found.${max>1?' Click to select, then press Use selected.':' Click one to use it.'}`;
+  $('#chOk').hidden=max<=1;$('#chOk').disabled=true;
+  $('#chGrid').innerHTML=pics.map((f,i)=>`<button class="ch" data-act="chooserPick" data-i="${i}" title="${esc(f.webkitRelativePath||f.name)}"><span class="im"></span><span class="nm">${esc(f.name)}</span></button>`).join('');
+  $('#chooser').showModal();
+  const token=ui.chooser;
+  for(let i=0;i<pics.length;i++){
+    if(ui.chooser!==token||!$('#chooser').open)break;
+    try{
+      const b=await decodeAny(pics[i]),bmp=await createImageBitmap(b),s=160/Math.max(bmp.width,bmp.height),c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(bmp.width*s));c.height=Math.max(1,Math.round(bmp.height*s));c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);bmp.close&&bmp.close();
+      const cell=$(`#chGrid .ch[data-i="${i}"] .im`);if(cell)cell.innerHTML=`<img src="${c.toDataURL('image/jpeg',.8)}" alt="">`;
+    }catch(e){const cell=$(`#chGrid .ch[data-i="${i}"]`);if(cell){cell.classList.add('bad');cell.title='Cannot open this file'}}
+  }
+}
 
 /* ---------- state ---------- */
 let P=null,LIB={chars:[]},PROJECTS=[];
@@ -731,14 +907,14 @@ function afterLeft(){
   const ed=$('#poseEd');if(ed)drawEditor();
 }
 const aiBtn=(act,label,extra='')=>`<button class="btn big gold" data-act="${act}" ${hasAI()?'':'disabled'} ${extra}>${label}</button>${hasAI()?'':`<p class="small muted">${noKey} <button class="btn sm" data-act="openSettings">Open Settings</button></p>`}`;
-const dropZone=(act,title,sub,multi)=>`<label class="drop" data-drop="${act}"><input type="file" class="sr" accept="image/*" data-act="${act}" ${multi?'multiple':''}><b>${title}</b><span class="small">${sub}</span></label>`;
+const dropZone=(act,title,sub,multi)=>`<div class="dropwrap"><label class="drop" data-drop="${act}" data-max="${multi?8:1}"><input type="file" class="sr" data-act="${act}" ${multi?'multiple':''}><b>${title}</b><span class="small">${sub}</span></label><label class="btn sm ghost folderbtn" title="Pick a folder, then choose pictures from it"><input type="file" class="sr" webkitdirectory multiple data-act="pickFolder" data-target="${act}" data-max="${multi?8:1}">Choose from a folder…</label></div>`;
 
 /* step 1 */
 function stepUpload(){
   const S=P.source,A=S.analysis,u=urlOf(S.ref);
   const field=(k,l,ph)=>`<label class="f"><span>${l}</span><textarea rows="2" data-f="p.source.analysis.${k}" data-r="prompt" placeholder="${esc(ph)}">${esc(A[k])}</textarea></label>`;
   return `<div class="sec first">
-    ${u?`<div class="img-box"><img src="${esc(u)}" alt="Source picture"></div><div class="row"><label class="btn sm grow"><input type="file" class="sr" accept="image/*" data-act="upSource">Replace picture</label><button class="btn sm ghost danger" data-act="clearSource">Remove</button></div>`
+    ${u?`<div class="img-box"><img src="${esc(u)}" alt="Source picture"></div><div class="row"><label class="btn sm grow"><input type="file" class="sr" data-act="upSource">Replace picture</label><button class="btn sm ghost danger" data-act="clearSource">Remove</button></div>`
       :dropZone('upSource','Drop a picture here','Photo, sketch, AI render or screenshot. Click to choose, or paste with Ctrl+V.')}
   </div>
   ${S.realPerson?`<div class="note warn"><b>This looks like a real person.</b> Only use photos of people who have given you permission.<label class="check" style="margin-top:8px"><input type="checkbox" data-f="p.source.permission" ${S.permission?'checked':''}><span>I have their permission</span></label></div>`:''}
@@ -798,7 +974,7 @@ function stepChars(){
       <div class="char-head"><input type="color" value="${esc(c.accent)}" data-f="ch:${c.id}.accent" data-r="right" title="Accent colour"><input type="text" value="${esc(c.name)}" data-f="ch:${c.id}.name" data-r="prompt" aria-label="Character name"></div>
       <label class="check"><input type="checkbox" data-act="toggleCast" data-id="${c.id}" ${inCast?'checked':''}><span>In this project</span></label>
       <label class="f"><span>Description</span><textarea rows="3" data-f="ch:${c.id}.desc" data-r="prompt" placeholder="Hair, eyes, build, outfit, accessories">${esc(c.desc)}</textarea><small>Include hair, eyes, build, outfit and accessories. This text goes into every prompt.</small></label>
-      <div class="grid4">${Object.keys(slotNames).map(k=>`<label class="slot" title="${slotNames[k]} reference picture">${c.refs[k]?`<img src="${esc(urlOf(c.refs[k]))}" alt=""><button class="x" data-act="clrRef" data-id="${c.id}" data-v="${k}" title="Remove">×</button>`:'+'}<input type="file" class="sr" accept="image/*" data-act="upRef" data-id="${c.id}" data-v="${k}"><span class="lb">${slotNames[k]}</span></label>`).join('')}</div>
+      <div class="grid4">${Object.keys(slotNames).map(k=>`<label class="slot" title="${slotNames[k]} reference picture. Click or drop a file." data-drop="upRef" data-max="1" data-id="${c.id}" data-v="${k}">${c.refs[k]?`<img src="${esc(urlOf(c.refs[k]))}" alt=""><button class="x" data-act="clrRef" data-id="${c.id}" data-v="${k}" title="Remove">×</button>`:'+'}<input type="file" class="sr" data-act="upRef" data-id="${c.id}" data-v="${k}"><span class="lb">${slotNames[k]}</span></label>`).join('')}</div>
       ${has?'':`<p class="note warn small"><b>No reference pictures yet.</b> Add at least a front view so ${esc(c.name)} looks the same in every panel.</p>`}
       <div class="row"><span class="small muted grow">${c.seed?'Seed panel is set':'No seed panel yet. Set one in step 5 after you pick a panel you like.'}</span>${c.seed?`<img src="${esc(urlOf(c.seed))}" alt="Seed panel" style="width:40px;height:40px;object-fit:cover;border-radius:6px"><button class="btn sm ghost" data-act="clrSeed" data-id="${c.id}">Clear</button>`:''}</div>
       <button class="btn sm ghost danger" data-act="delChar" data-id="${c.id}" style="justify-self:start">Delete character</button>
@@ -1043,9 +1219,13 @@ async function copyText(t){try{await navigator.clipboard.writeText(t);toast('Cop
 /* drag & drop + paste */
 document.addEventListener('dragover',e=>{const z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over')}});
 document.addEventListener('dragleave',e=>{const z=e.target.closest('[data-drop]');if(z)z.classList.remove('over')});
-document.addEventListener('drop',e=>{const z=e.target.closest('[data-drop]');if(!z)return;e.preventDefault();z.classList.remove('over');runAct(z.dataset.drop,z,e.dataTransfer.files)});
+document.addEventListener('drop',async e=>{const z=e.target.closest('[data-drop]');if(!z)return;e.preventDefault();z.classList.remove('over');
+  const {files,folder}=await filesFromDrop(e.dataTransfer),max=+z.dataset.max||1;
+  if(folder||files.length>max)openChooser(files,z.dataset.drop,max,z);else runAct(z.dataset.drop,z,files)});
+document.addEventListener('dragover',e=>{if(e.target.closest('[data-drop]'))return;e.preventDefault()});
+document.addEventListener('drop',e=>{if(!e.target.closest('[data-drop]'))e.preventDefault()});
 document.addEventListener('paste',e=>{
-  const files=imgFiles([...(e.clipboardData&&e.clipboardData.files||[])]);if(!files.length)return;
+  const files=[...(e.clipboardData&&e.clipboardData.files||[])];if(!files.length)return;
   e.preventDefault();
   const target={1:'upSource',2:'upPose',6:'upEdit'}[P.step]||'upVar';
   runAct(target,null,files);
@@ -1115,7 +1295,7 @@ const A={
   async newProject(el){if(dirty&&DB)await saveNow();P=newProject(false);ensurePanels(P);ui.sel=0;ui.bub=null;markDirty();renderAll();toast('New project started');$('#projName').focus();$('#projName').select()},
   async pickProject(el){if(el.value===P.id)return;if(dirty)await saveNow();await loadProject(el.value)},
   /* upload */
-  async upSource(el,files){const f=imgFiles(files)[0];if(!f){toast('Choose a picture file (PNG, JPG or WebP).');return}
+  async upSource(el,files){const f=(await readPictures(files,1))[0];if(!f)return;
     toast('Adding picture…');P.source.ref=await putImage(f);P.source.realPerson=false;P.source.permission=false;markDirty();renderAll();toast('Picture added. Press "Read this picture" next.')},
   clearSource(el){if(!confirmClick(el,'Click again to remove'))return;P.source.ref=null;markDirty();renderAll()},
   async analyze(el){
@@ -1137,7 +1317,7 @@ Reply with only a JSON object: {"subject": string, "outfit": string, "setting": 
     });
   },
   /* poses */
-  async upPose(el,files){const fs=imgFiles(files).slice(0,8);if(!fs.length){toast('Choose one or more picture files.');return}
+  async upPose(el,files){const fs=await readPictures(files,8);if(!fs.length)return;
     const found=[];for(const f of fs){const kind=await detectPoseKind(f);const ref=await putImage(f);const p={id:uid(),name:f.name.replace(/\.[^.]+$/,'').slice(0,40)||'Pose',kind,ref};P.poses.push(p);P.poseSel=p.id;found.push(POSE_KINDS[kind])}
     markDirty();renderLeft();renderRight();toast(fs.length===1?`Added. Detected: ${found[0]}.`:`Added ${fs.length} poses.`)},
   selPose(el){P.poseSel=el.dataset.id;renderLeft()},
@@ -1152,7 +1332,7 @@ Reply with only a JSON object: {"subject": string, "outfit": string, "setting": 
   usePose(){selPanel().poseId=P.poseSel;markDirty();renderRight();toast(`Panel ${ui.sel+1} now uses this pose.`)},
   async savePosePng(){const p=poseById(P.poseSel);if(!p||!p.joints)return;await offer(`pose-${slug(p.name)}.png`,await skelBlob(p.joints))},
   async posePhoto(el,files){
-    const f=imgFiles(files)[0];if(!f)return;if(!hasAI()){A.openSettings();return}
+    const f=(await readPictures(files,1))[0];if(!f)return;if(!hasAI()){A.openSettings();return}
     const zone=el&&el.closest?el.closest('.drop'):null;if(zone)zone.classList.add('over');toast('Gemini is reading your pose. This can take up to a minute.');
     try{
       const r=await aiText(`This photo shows a person posing. Find their body keypoints for an OpenPose skeleton.
@@ -1171,7 +1351,7 @@ x and y are fractions from 0 to 1 of the image width and height, measured from t
   addChar(){const c={id:uid(),name:'NEW CHARACTER',accent:'#7aa2d8',desc:'',refs:{front:null,side:null,back:null,face:null},seed:null};LIB.chars.push(c);P.cast.push(c.id);markDirty(true);renderLeft();renderRight()},
   delChar(el){if(!confirmClick(el,'Click again: removes from all projects'))return;const id=el.dataset.id;LIB.chars=LIB.chars.filter(c=>c.id!==id);P.cast=P.cast.filter(x=>x!==id);P.panels.forEach(pn=>pn.chars=pn.chars.filter(x=>x!==id));markDirty(true);renderLeft();renderRight()},
   toggleCast(el){const id=el.dataset.id;if(el.checked){if(!P.cast.includes(id))P.cast.push(id)}else P.cast=P.cast.filter(x=>x!==id);markDirty();renderRight();renderSteps()},
-  async upRef(el,files){const f=imgFiles(files)[0];if(!f)return;const c=charById(el.dataset.id);c.refs[el.dataset.v]=await putImage(f);markDirty(true);renderLeft();renderSteps()},
+  async upRef(el,files){const f=(await readPictures(files,1))[0];if(!f)return;const c=charById(el.dataset.id);c.refs[el.dataset.v]=await putImage(f);markDirty(true);renderLeft();renderSteps()},
   clrRef(el){const c=charById(el.dataset.id);c.refs[el.dataset.v]=null;markDirty(true);renderLeft()},
   clrSeed(el){charById(el.dataset.id).seed=null;markDirty(true);renderLeft()},
   setSeed(el){const c=charById(el.dataset.id),cu=cur(selPanel());if(!cu)return;c.seed=cu;markDirty(true);renderLeft();toast(`Seed panel set for ${c.name}. It is now attached to every panel with ${c.name}.`)},
@@ -1224,7 +1404,7 @@ Vary the shots. Keep dialogue short (under 12 words a bubble, at most 2 bubbles 
       z.file('prompt.txt',buildPrompt(pn));
       await offer(`${slug(P.name)}-panel-${ui.sel+1}-references.zip`,await z.generateAsync({type:'blob'}))});
   },
-  async upVar(el,files){const pn=selPanel();const fs=imgFiles(files).slice(0,4-pn.variations.length);if(!fs.length){toast(pn.variations.length>=4?'This panel already has 4 versions. Remove one first.':'Choose a picture file.');return}
+  async upVar(el,files){const pn=selPanel();const fs=pn.variations.length<4?await readPictures(files,4-pn.variations.length):[];if(!fs.length){if(pn.variations.length<4)return;toast(pn.variations.length>=4?'This panel already has 4 versions. Remove one first.':'Choose a picture file.');return}
     for(const f of fs)pn.variations.push(await putImage(f));
     if(pn.chosen<0){pn.chosen=0;pushHist(pn,pn.variations[0],'Version 1')}
     markDirty();renderAll();toast(fs.length>1?`${fs.length} versions added to panel ${ui.sel+1}.`:`Version added to panel ${ui.sel+1}.`)},
@@ -1234,7 +1414,7 @@ Vary the shots. Keep dialogue short (under 12 words a bubble, at most 2 bubbles 
   undo(){const pn=selPanel();if(pn.h>0){pn.h--;markDirty();renderAll()}},
   redo(){const pn=selPanel();if(pn.h<pn.history.length-1){pn.h++;markDirty();renderAll()}},
   jumpHist(el){const pn=selPanel();pn.h=+el.dataset.v;markDirty();renderAll()},
-  async upEdit(el,files){const f=imgFiles(files)[0];if(!f)return;const pn=selPanel();
+  async upEdit(el,files){const f=(await readPictures(files,1))[0];if(!f)return;const pn=selPanel();
     pushHist(pn,await putImage(f),'Edited version (uploaded)');markDirty();renderAll();toast('New version added. Undo takes you back.')},
   async genPanel(el){
     if(!hasAI()){A.openSettings();return}if(ui.gen)return;
@@ -1272,6 +1452,13 @@ No text, no speech bubbles, no watermarks, no panel borders.`;
     }catch(e){if(!(e&&e.code==='cancelled'))toast(aiErr(e))}
     finally{ui.gen=null;renderAll()}
   },
+  async pickFolder(el,files){const list=[...(files||[])];if(!list.length)return;await openChooser(list,el.dataset.target,+el.dataset.max||1,el)},
+  chooserPick(el){const c=ui.chooser;if(!c)return;const i=+el.dataset.i;
+    if(c.max<=1){$('#chooser').close();ui.chooser=null;runAct(c.act,c.el,[c.files[i]]);return}
+    if(c.sel.has(i))c.sel.delete(i);else if(c.sel.size<c.max)c.sel.add(i);else{toast(`You can pick up to ${c.max}.`);return}
+    el.classList.toggle('on',c.sel.has(i));$('#chOk').disabled=!c.sel.size;$('#chOk').textContent=c.sel.size?`Use ${c.sel.size} selected`:'Use selected'},
+  chooserOk(){const c=ui.chooser;if(!c)return;$('#chooser').close();ui.chooser=null;runAct(c.act,c.el,[...c.sel].sort((a,b)=>a-b).map(i=>c.files[i]))},
+  chooserClose(){ui.chooser=null;$('#chooser').close()},
   /* lettering */
   addBub(el){const pn=selPanel(),t=el.dataset.v,b=newBubble(t,P,pn.bubbles.filter(x=>x.type!=='sfx').length);pn.bubbles.push(b);ui.bub=b.id;markDirty();renderBubbles();renderLeft();renderRight();const tx=$('#bubText');if(tx){tx.focus();tx.select()}},
   selBub(el){ui.bub=el.dataset.id;renderBubbles();renderLeft();renderRight()},
