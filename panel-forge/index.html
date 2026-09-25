@@ -251,7 +251,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- constants ---------- */
 const STEPS=[
-  ['Upload','Add the picture you want to turn into a panel. Claude reads who is in it, what they wear and where they are.'],
+  ['Add background','Add a picture of the place where your scene happens: a street, room, rooftop, forest… Claude reads it, and every panel is drawn in that setting in manga or manhwa style.'],
   ['Pose','Choose how the character stands or moves: upload a pose file, build a stick figure, or use a photo of yourself.'],
   ['Characters','Lock in who appears, so they look the same in every panel.'],
   ['Layout','Pick a page or strip layout, set the look, and plan what happens in each panel.'],
@@ -552,12 +552,12 @@ function defaultChars(){return[
   {id:'jirad',name:'JIRAD',accent:'#d8a540',desc:'Male. ',refs:{front:null,side:null,back:null,face:null},seed:null},
   {id:'roven',name:'ROVEN',accent:'#c7743a',desc:'Female. ',refs:{front:null,side:null,back:null,face:null},seed:null},
 ]}
-function newPanel(p){return{id:uid(),shot:'med',poseId:p.poses[0]?p.poses[0].id:null,chars:[...p.cast],line:'',mood:'',outfitOverride:false,outfitNote:'',space:'top',size:'standard',variations:[],chosen:-1,history:[],h:-1,bubbles:[],veo:null}}
+function newPanel(p){return{id:uid(),useBg:true,shot:'med',poseId:p.poses[0]?p.poses[0].id:null,chars:[...p.cast],line:'',mood:'',outfitOverride:false,outfitNote:'',space:'top',size:'standard',variations:[],chosen:-1,history:[],h:-1,bubbles:[],veo:null}}
 function panelCount(p){return p.mode==='manga'?MANGA[p.layout.manga].r.length:p.stripCount}
 function ensurePanels(p){while(p.panels.length<panelCount(p))p.panels.push(newPanel(p))}
 function newProject(example){
   const p={id:uid(),name:example?'Rooftop pendant':'Untitled chapter',mode:'manga',step:1,updated:Date.now(),
-    source:{ref:null,analysis:{subject:'',outfit:'',setting:'',lighting:'',mood:''},realPerson:false,permission:false},
+    source:{ref:null,analysis:{subject:'',outfit:'',setting:'',time:'',details:'',lighting:'',mood:''},realPerson:false,permission:false},
     poses:[],poseSel:null,layout:{manga:'4',manhwa:'opening'},stripCount:4,gutter:100,
     look:{line:'medium',shading:'medium',bg:'simple'},
     palette:['#1c2240','#3a5a8a','#e6bf78','#c7743a','#f3ede2','#6a3a4a'],
@@ -714,14 +714,16 @@ function buildPrompt(pn){
       s+=pn.outfitOverride?` Outfit change allowed in this panel only: ${pn.outfitNote||'as described in the action'}.`:' Keep the outfit exactly as in the references.';
       out.push(s);
     });
-  }else if(A.subject)out.push(`Subject: ${A.subject}${A.outfit?', wearing '+A.outfit:''}.`);
+  }else out.push('No characters in this panel: draw the background only, as an establishing shot.');
   if(pose){
     let s=`Pose: follow the attached pose reference precisely: ${pose.name} (${POSE_KINDS[pose.kind]||'reference'}).`;
     if(pose.kind==='openpose')s+=' The coloured stick figure is an OpenPose skeleton; match every limb angle, and do not draw the skeleton itself.';
     out.push(s);
   }
   out.push(`Shot: ${SHOTS[pn.shot]||'Medium shot'}.`);
-  const setting=A.setting||'';out.push(`Setting: ${setting||'from the scene description'}${P.look.bg==='none'?' (keep the background plain or empty)':P.look.bg==='simple'?' (simple background)':' (fully detailed background)'}.`);
+  const bgOn=P.source.ref&&pn.useBg!==false,place=[A.setting,A.time].filter(Boolean).join(', '),detail=P.look.bg==='none'?' Keep it plain and faint behind the characters.':P.look.bg==='simple'?' Keep it simple so the characters stand out.':' Draw it fully detailed.';
+  if(bgOn)out.push(`Background: use the attached background picture as the setting${place?' ('+place+')':''}. Redraw it in the same ${P.mode==='manga'?'black-and-white manga':'full-colour manhwa'} style as the characters, keeping its layout and landmarks${A.details?' ('+A.details+')':''}, seen from the camera angle of this shot.${detail}`);
+  else out.push(`Background: ${place||'from the scene description'}.${detail}`);
   const mood=[pn.mood||P.scene.mood,A.lighting].filter(Boolean).join('; ');if(mood)out.push(`Mood/lighting: ${mood}.`);
   out.push(`Action: ${pn.line||'(describe what happens in this panel)'}.`);
   if(P.scene.text)out.push(`Story context: ${P.scene.text}`);
@@ -733,7 +735,7 @@ function buildPrompt(pn){
 }
 function attachments(pn){
   const a=[];
-  if(P.source.ref)a.push({label:'source picture',ref:P.source.ref,file:'01-source'});
+  if(P.source.ref&&pn.useBg!==false)a.push({label:'background picture',ref:P.source.ref,file:'01-background'});
   const pose=poseById(pn.poseId);
   if(pose)a.push({label:`pose reference (${pose.name})`,ref:pose.ref||null,joints:pose.joints||null,file:'02-pose'});
   pn.chars.map(charById).filter(Boolean).forEach(c=>{
@@ -816,19 +818,21 @@ function stepUpload(){
   const S=P.source,A=S.analysis,u=urlOf(S.ref);
   const field=(k,l,ph)=>`<label class="f"><span>${l}</span><textarea rows="2" data-f="p.source.analysis.${k}" data-r="prompt" placeholder="${esc(ph)}">${esc(A[k])}</textarea></label>`;
   return `<div class="sec first">
-    ${u?`<div class="img-box"><img src="${esc(u)}" alt="Source picture"></div><div class="row"><label class="btn sm grow"><input type="file" class="sr" data-act="upSource">Replace picture</label><button class="btn sm ghost danger" data-act="clearSource">Remove</button></div>`
-      :dropZone('upSource','Drop a picture here','Photo, sketch, AI render or screenshot. Click to choose, or paste with Ctrl+V.')}
+    ${u?`<div class="img-box"><img src="${esc(u)}" alt="Background picture"></div><div class="row"><label class="btn sm grow"><input type="file" class="sr" data-act="upSource">Replace background</label><button class="btn sm ghost danger" data-act="clearSource">Remove</button></div>`
+      :dropZone('upSource','Drop a background picture here','A photo, drawing or screenshot of a place. Click to choose, or paste with Ctrl+V.')}
+    <p class="small muted">Tip: pictures without people work best. Your characters are added in the panels.</p>
   </div>
-  ${S.realPerson?`<div class="note warn"><b>This looks like a real person.</b> Only use photos of people who have given you permission.<label class="check" style="margin-top:8px"><input type="checkbox" data-f="p.source.permission" ${S.permission?'checked':''}><span>I have their permission</span></label></div>`:''}
+  ${S.realPerson?`<div class="note warn"><b>This picture shows a real person.</b> Only use it if you have their permission, or pick a background without people.<label class="check" style="margin-top:8px"><input type="checkbox" data-f="p.source.permission" ${S.permission?'checked':''}><span>I have their permission</span></label></div>`:''}
   <div class="sec">
-    <h3>What Claude sees</h3>
-    ${claudeBtn('analyze','Read this picture',S.ref?'':'disabled')}
-    ${!S.ref?'<p class="small muted">Add a picture first. You can also fill these in yourself.</p>':''}
-    ${field('subject','Subject','Who or what is in the picture')}
-    ${field('outfit','Outfit','Clothes, colours, accessories')}
-    ${field('setting','Setting','Place, time of day, weather')}
+    <h3>About this place</h3>
+    ${claudeBtn('analyze','Read this background',S.ref?'':'disabled')}
+    ${!S.ref?'<p class="small muted">Add a background first. You can also describe the place yourself.</p>':''}
+    ${field('setting','Place','e.g. school rooftop in a big city')}
+    ${field('time','Time & weather','e.g. night, heavy rain')}
+    ${field('details','Key details','Buildings, objects and landmarks to keep')}
     ${field('lighting','Lighting','Where the light comes from, how bright')}
-    ${field('mood','Mood','The feeling of the picture')}
+    ${field('mood','Mood','The feeling of the place')}
+    <p class="small muted">Every panel uses this background unless you switch it off for a panel in the inspector. Choose how detailed it is in step 4.</p>
   </div>`;
 }
 /* step 2 */
@@ -838,7 +842,7 @@ function stepPose(){
     ${p.joints?`<canvas width="64" height="96" data-skel="${p.id}"></canvas>`:`<img src="${esc(urlOf(p.ref))}" alt="">`}
     <span class="nm">${esc(p.name)}</span>${p.pending?'<span class="tag warn">Check me</span>':`<span class="tag">${esc((POSE_KINDS[p.kind]||'').split(' ')[0])}</span>`}</button>`;
   let s=`<div class="sec first"><h3>Preview</h3><div class="grid2">
-    <div class="thumb" style="--ar:2/3">${src?`<img src="${esc(src)}" alt="Source picture">`:'No source picture'}</div>
+    <div class="thumb" style="--ar:2/3">${src?`<img src="${esc(src)}" alt="Background">`:'No background'}</div>
     <div class="thumb" style="--ar:2/3">${sel?(sel.joints?`<canvas width="200" height="300" data-skel="${sel.id}" style="width:100%;height:100%"></canvas>`:`<img src="${esc(urlOf(sel.ref))}" alt="Pose" style="object-fit:contain;background:#000">`):'No pose chosen'}</div></div></div>
   <div class="sec"><h3>Your poses</h3><div class="pose-list">${P.poses.map(card).join('')}</div>`;
   if(sel){
@@ -903,7 +907,7 @@ function stepLayout(){
     <div class="f"><span>Shading</span>${seg('shading',[['light','Light'],['medium','Medium'],['heavy','Heavy']])}</div>
     <div class="f"><span>Background detail</span>${seg('bg',[['none','None'],['simple','Simple'],['full','Full']])}</div>
     ${P.mode==='manhwa'?`<div class="f"><span>Project colours</span><div class="swatches">${P.palette.map((c,i)=>`<input type="color" value="${esc(c)}" data-f="p.palette.${i}" data-r="prompt" title="Colour ${i+1}">`).join('')}</div><small>Every panel uses these colours so the strip feels consistent.</small></div>
-      <button class="btn sm" data-act="paletteFromSource" ${P.source.ref?'':'disabled'}>Take colours from the source picture</button>`:''}
+      <button class="btn sm" data-act="paletteFromSource" ${P.source.ref?'':'disabled'}>Take colours from the background</button>`:''}
   </div>
   <div class="sec"><h3>Scene</h3>
     <label class="f"><span>What happens</span><textarea rows="5" data-f="p.scene.text" data-r="prompt" placeholder="Describe the scene in a few sentences. Add dialogue in quotes if you like.">${esc(P.scene.text)}</textarea>${P.scene.text===EXAMPLE_SCENE?'<small>Example scene. Replace it with yours.</small>':''}</label>
@@ -917,7 +921,7 @@ function stepLayout(){
 function stepGenerate(){
   const pn=selPanel(),att=attachments(pn),chars=pn.chars.map(charById).filter(Boolean);
   const warns=[];
-  if(!P.source.ref)warns.push('No source picture. The prompt will rely on your scene text.');
+  if(!P.source.ref)warns.push('No background picture. The setting comes from your scene text only. Add one in step 1.');
   if(!poseById(pn.poseId))warns.push('No pose chosen for this panel. Pick one in the inspector.');
   chars.forEach(c=>{if(!Object.values(c.refs).some(Boolean))warns.push(`${c.name} has no reference pictures. Add them in step 3.`)});
   if(P.source.realPerson&&!P.source.permission)warns.push('The source photo shows a real person. Confirm you have permission in step 1.');
@@ -1004,7 +1008,8 @@ function pageSVG(){
     if(u)s+=`<image href="${esc(u)}" x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#cp${i})"/>`;
     else{
       const fs=Math.min(26,r.w/14);
-      s+=`<rect x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" fill="url(#hatch)"/>
+      const bu=pn.useBg!==false?urlOf(P.source.ref):'';
+      s+=`<rect x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" fill="url(#hatch)"/>${bu?`<image href="${esc(bu)}" x="${f1(r.x)}" y="${f1(r.y)}" width="${f1(r.w)}" height="${f1(r.h)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#cp${i})" opacity="${P.mode==='manga'?.3:.4}" style="${P.mode==='manga'?'filter:grayscale(1)':''}"/>`:''}
       <text x="${f1(cx)}" y="${f1(cy-fs*1.2)}" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-weight="700" font-size="${f1(Math.min(84,r.w/5))}" fill="#c9c3b8">${i+1}</text>
       <text x="${f1(cx)}" y="${f1(cy+fs*1.4)}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="${f1(fs*.8)}" fill="#8e887e" letter-spacing="2">${esc(SHOTS[pn.shot].toUpperCase())}</text>
       ${pn.line?`<text x="${f1(cx)}" y="${f1(cy+fs*2.8)}" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="${f1(fs*.85)}" fill="#9d978d">${esc(trunc(pn.line,Math.floor(r.w/(fs*.5))))}</text>`:''}`;
@@ -1055,6 +1060,7 @@ function renderRight(){
     <label class="f"><span>Camera shot</span><select data-f="pn.shot" data-r="prompt,canvas">${opt(SHOTS,pn.shot)}</select></label>
     <label class="f"><span>Pose</span><select data-f="pn.poseId" data-r="prompt,left5">${P.poses.filter(p=>!p.pending).map(p=>`<option value="${p.id}" ${pn.poseId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}<option value="" ${pn.poseId?'':'selected'}>No pose</option></select></label>
     <div class="f"><span>Characters</span><div class="chips">${castChars.map(c=>`<button class="chip ${pn.chars.includes(c.id)?'on':''}" data-act="togglePanelChar" data-id="${c.id}" aria-pressed="${pn.chars.includes(c.id)}"><span class="dot" style="background:${esc(c.accent)}"></span>${esc(c.name)}</button>`).join('')||'<span class="small muted">Add characters in step 3.</span>'}</div></div>
+    <label class="check"><input type="checkbox" data-f="pn.useBg" data-r="prompt,canvas,left5" ${pn.useBg!==false?'checked':''} ${P.source.ref?'':'disabled'}><span>Use the background picture <span class="small muted">${P.source.ref?'(untick for a plain or different background)':'(add one in step 1)'}</span></span></label>
     <label class="check"><input type="checkbox" data-f="pn.outfitOverride" data-r="prompt,right" ${pn.outfitOverride?'checked':''}><span>Outfit override <span class="small muted">(allow a different outfit in this panel only)</span></span></label>
     ${pn.outfitOverride?`<label class="f"><span>New outfit</span><input type="text" data-f="pn.outfitNote" data-r="prompt" value="${esc(pn.outfitNote)}" placeholder="e.g. rain coat over the usual clothes"></label>`:''}
     <label class="f"><span>Mood</span><input type="text" data-f="pn.mood" data-r="prompt" value="${esc(pn.mood)}" placeholder="${esc(P.scene.mood||'Uses the scene mood')}"></label>
@@ -1185,7 +1191,7 @@ const A={
   async pickProject(el){if(el.value===P.id)return;if(dirty)await saveNow();await loadProject(el.value)},
   /* upload */
   async upSource(el,files){const f=(await readPictures(files,1))[0];if(!f)return;
-    toast('Adding picture…');P.source.ref=await putImage(f);P.source.realPerson=false;P.source.permission=false;markDirty();renderAll();toast('Picture added. Press "Read this picture" next.')},
+    toast('Adding background…');P.source.ref=await putImage(f);P.source.realPerson=false;P.source.permission=false;markDirty();renderAll();toast('Background added. Every panel will use it. Press "Read this background" next.')},
   clearSource(el){if(!confirmClick(el,'Click again to remove'))return;P.source.ref=null;markDirty();renderAll()},
   async analyze(el){
     if(!SAMPLE){toast(noClaude);return}if(!P.source.ref)return;
@@ -1193,15 +1199,15 @@ const A={
     await busy(el,async()=>{
       try{
         const blob=await blobOf(P.source.ref);
-        const r=await SAMPLE.json(`You are helping a comic artist turn this picture into a ${P.mode} panel. Describe what is in the picture so it can be redrawn.
-Reply with only a JSON object: {"subject": string, "outfit": string, "setting": string, "lighting": string, "mood": string, "realPerson": boolean}
-- subject: who or what is shown (age range, build, hair, expression). One sentence.
-- outfit: clothing, colours and accessories. One sentence. Empty string if none.
-- setting: place, time of day, weather. One sentence.
+        const r=await SAMPLE.json(`You are helping a comic artist use this picture as the BACKGROUND (the setting) for ${P.mode==='manga'?'manga':'manhwa'} panels. Describe the place so it can be redrawn behind the characters.
+Reply with only a JSON object: {"setting": string, "time": string, "details": string, "lighting": string, "mood": string, "realPerson": boolean}
+- setting: what kind of place this is. One short sentence.
+- time: time of day, season and weather. Short phrase.
+- details: the landmarks, buildings, objects and layout that make this place recognisable, plus the camera height and perspective. One or two sentences.
 - lighting: light direction, quality and colour. Short phrase.
 - mood: 2 to 4 words.
-- realPerson: true if this looks like a real photograph of a real person, false for drawings, renders or no people.`,{images:[blob]});
-        const a=P.source.analysis;['subject','outfit','setting','lighting','mood'].forEach(k=>{if(typeof r[k]==='string')a[k]=r[k]});
+- realPerson: true if this is a real photograph that shows a real, identifiable person; false otherwise.`,{images:[blob]});
+        const a=P.source.analysis;['setting','time','details','lighting','mood'].forEach(k=>{if(typeof r[k]==='string')a[k]=r[k]});
         P.source.realPerson=!!r.realPerson;if(!P.scene.mood&&a.mood)P.scene.mood=a.mood;markDirty();renderLeft();toast('Done. Edit anything that is wrong.');
       }catch(e){toast(sampleErr(e))}
     });
@@ -1251,7 +1257,7 @@ x and y are fractions from 0 to 1 of the image width and height, measured from t
   addPanel(){P.stripCount++;ensurePanels(P);ui.sel=P.stripCount-1;markDirty();renderAll()},
   delPanel(el){if(P.stripCount<=1)return;if(!confirmClick(el,'Click again to remove'))return;P.panels.splice(ui.sel,1);P.stripCount--;ensurePanels(P);ui.sel=Math.min(ui.sel,P.stripCount-1);ui.bub=null;markDirty();renderAll()},
   setLook(el){P.look[el.dataset.k]=el.dataset.v;markDirty();renderLeft()},
-  async paletteFromSource(el){await busy(el,async()=>{P.palette=await paletteFrom(P.source.ref);markDirty();renderLeft();toast('Colours taken from the source picture.')})},
+  async paletteFromSource(el){await busy(el,async()=>{P.palette=await paletteFrom(P.source.ref);markDirty();renderLeft();toast('Colours taken from the background.')})},
   async plan(el){
     if(!SAMPLE){toast(noClaude);return}
     const n=panelCount(P),cast=P.cast.map(charById).filter(Boolean),poseNames=[...P.poses.filter(p=>!p.pending).map(p=>p.name),...Object.keys(POSE_PRESETS)];
@@ -1261,7 +1267,7 @@ x and y are fractions from 0 to 1 of the image width and height, measured from t
 Scene: ${P.scene.text}
 Mood: ${P.scene.mood||'(not given)'}
 Characters: ${cast.map(c=>`${c.name} (${c.desc.trim()||'no description'})`).join('; ')||'none'}
-${P.source.analysis.subject?'Source picture: '+P.source.analysis.subject+' '+P.source.analysis.setting:''}
+${P.source.analysis.setting?'Background / setting: '+[P.source.analysis.setting,P.source.analysis.time,P.source.analysis.details].filter(Boolean).join('; '):''}
 Shot keys: ${Object.entries(SHOTS).map(([k,v])=>k+' = '+v).join(', ')}
 Pose names you may use: ${[...new Set(poseNames)].join(', ')}
 Reply with only JSON: {"panels":[{"shot": one shot key, "pose": one pose name from the list, "characters": [character names], "line": "what happens, one sentence", "mood": "2-4 words", "dialogue": [{"character": name or "", "type": "speech"|"thought"|"shout"|"narration", "text": "short line"}], "sfx": "sound effect word or empty string"}]}

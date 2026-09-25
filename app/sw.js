@@ -1,6 +1,6 @@
 // Panel Forge service worker: makes the app installable and lets it open offline.
 // Bump VERSION whenever you change any app file so users get the update.
-const VERSION = 'pf-v2';
+const VERSION = 'pf-v3';
 const SHELL = [
   './',
   'index.html',
